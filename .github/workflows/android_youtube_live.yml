@@ -50,7 +50,7 @@ jobs:
             while [ "$(adb shell getprop sys.boot_completed | tr -d '\r')" != "1" ]; do echo "Emulator Boot တက်ရန် စောင့်ဆိုင်းနေဆဲဖြစ်ပါသည် (၅ စက္ကန့် ထပ်စောင့်ပါမည်)..."; sleep 5; done
             
             echo "==== Emulator ၏ စနစ်တစ်ခုလုံး အပြီးသတ်ပွင့်သွားပါပြီ ===="
-            sleep 5
+            sleep 60
             
             echo "App အား Emulator ထဲသို့ ထည့်သွင်းနေပါသည်..."
             adb install -r target_app.apk
