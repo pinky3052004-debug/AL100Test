@@ -1,4 +1,4 @@
-name: Full Android Emulator & YouTube Live Stream (Final Stabilized)
+name: Full Android Emulator & YouTube Live Stream (Final Production)
 
 on:
   workflow_dispatch:
@@ -35,7 +35,7 @@ jobs:
       - name: Setup and Run Android Emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 29          # Android 10 (တည်ငြိမ်ပြီး အမြန်ဆုံး ဗားရှင်း)
+          api-level: 29          # Android 10 (ပေါ့ပါးမြန်ဆန်သည်)
           target: google_apis    
           arch: x86_64           
           force-avd-creation: false
@@ -46,14 +46,24 @@ jobs:
             echo "==== Emulator စတင်တက်လာပါပြီ ===="
             adb wait-for-device
             
-            echo "Emulator System Services များ အပြီးသတ်ပွင့်လာစေရန် စက္ကန့် ၂၀ စောင့်ဆိုင်းနေပါသည်..."
-            sleep 20
+            # 🚀 🚀 ပြင်ဆင်ချက်အသစ် - Emulator တစ်ခုလုံး အပြီးသတ် Boot တက်မတက်ကို Loop ပတ်ပြီး စစ်ဆေးခြင်း
+            echo "Emulator Package Manager ပွင့်လာသည်အထိ စောင့်ဆိုင်းနေပါသည်..."
             
-            # 🚀 ပြင်ဆင်ချက်- Android 10 တွင် မရှိသော option အား ဖြုတ်လိုက်ပြီး စံနှုန်းအတိုင်း သွင်းခြင်း
+            # sys.boot_completed တန်ဖိုး 1 (True) ဖြစ်လာသည်အထိ Loop ပတ်စစ်ဆေးမည်
+            while [ "`adb shell getprop sys.boot_completed | tr -d '\r'`" != "1" ] ; do
+              echo "Emulator Boot တက်ရန် စောင့်ဆိုင်းနေဆဲဖြစ်ပါသည် (၅ စက္ကန့် ထပ်စောင့်ပါမည်)..."
+              sleep 5
+            done
+            
+            echo "==== Emulator ၏ စနစ်တစ်ခုလုံး အပြီးသတ်ပွင့်သွားပါပြီ ===="
+            echo "တည်ငြိမ်စေရန် ၅ စက္ကန့် ထပ်မံစောင့်ပါမည်..."
+            sleep 5
+            
+            # စနစ်ရာနှုန်းပြည့်အဆင်သင့်ဖြစ်မှ APK သွင်းခြင်း
             echo "App အား Emulator ထဲသို့ ထည့်သွင်းနေပါသည်..."
             adb install -r target_app.apk
             
-            echo "စနစ်အား တည်ငြိမ်စေရန် ၅ စက္ကန့် ထပ်မံစောင့်ဆိုင်းနေပါသည်..."
+            echo "သွင်းပြီးနောက် တည်ငြိမ်စေရန် ၅ စက္ကန့် စောင့်ဆိုင်းနေပါသည်..."
             sleep 5
             
             echo "App အား စတင်ဖွင့်လှစ်နေပါသည်: network.kalock.myanmar2d"
