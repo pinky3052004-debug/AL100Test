@@ -1,11 +1,11 @@
-name: Full Android Emulator & YouTube Live Stream (Fixed Variable Scope)
+name: Full Android Emulator & YouTube Live Stream (Final Fixed)
 
 on:
-  workflow_dispatch:
+  workflow_dispatch: # Actions Tab ထဲကနေ 'Run workflow' နှိပ်ပြီး မောင်းရန်
 
 jobs:
   live_stream:
-    runs-on: macos-15-intel
+    runs-on: macos-15-intel # တည်ငြိမ်ပြီး အမြန်ဆုံး Intel Mac Runner
 
     steps:
       - name: Checkout Repository Code
@@ -22,6 +22,7 @@ jobs:
           brew update
           brew install ffmpeg
 
+      # သင့်ရဲ့ GitHub Release (v1.0.0) ထဲမှ my_app.apk ကို တိုက်ရိုက်ဒေါင်းလုဒ်ဆွဲခြင်း
       - name: Download APK from GitHub Releases
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -34,7 +35,7 @@ jobs:
       - name: Setup and Run Android Emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 29          
+          api-level: 29          # Android 10 (ပေါ့ပါးပြီး Actions ပေါ်တွင် အမြန်ဆုံး တက်ပါသည်)
           target: google_apis    
           arch: x86_64           
           force-avd-creation: false
@@ -49,22 +50,17 @@ jobs:
             echo "App အား Emulator ထဲသို့ ထည့်သွင်းနေပါသည်..."
             adb install target_app.apk
             
-            echo "စနစ်အား တည်ငြိမ်စေရန် ၇ စက္ကန့် စောင့်ဆိုင်းနေပါသည်..."
-            sleep 7
+            echo "စနစ်အား တည်ငြိမ်စေရန် ၅ စက္ကန့် စောင့်ဆိုင်းနေပါသည်..."
+            sleep 5
             
-            echo "App အား စတင်ဖွင့်လှစ်ရန် ကြိုးစားနေပါသည်..."
-            # 🚀 ပြင်ဆင်ချက်- ကိန်းရှင် (Variable) ပျောက်ဆုံးမှု မရှိစေရန် တစ်လိုင်းတည်းဖြင့် အလုပ်လုပ်စေခြင်း
-            # အလိုအလျောက်ရှာလို့ ရရင်ရ၊ မရရင် 'com.zoerecap.app' ကို သုံးပြီး App ကို လှမ်းဖွင့်ပါမည်။
-            adb shell "
-              PKG=\$(pm list packages -3 | tail -n 1 | cut -d':' -f2 | tr -d '\r' | xargs);
-              if [ -z \"\$PKG\" ]; then PKG='com.zoerecap.app'; fi;
-              echo \"ဖွင့်မည့် Package Name: \$PKG\";
-              monkey -p \$PKG -c android.intent.category.LAUNCHER 1
-            "
+            # 🚀 အဓိက ပြင်ဆင်ချက်- သင့် App ရဲ့ Package Name ကို တိုက်ရိုက် တိတိကျကျ ဖွင့်ခိုင်းခြင်း
+            echo "App အား စတင်ဖွင့်လှစ်နေပါသည်: network.kalock.myanmar2d"
+            adb shell monkey -p network.kalock.myanmar2d -c android.intent.category.LAUNCHER 1
             
             sleep 5
 
             echo "==== YouTube သို့ Live Stream စတင်လွှင့်နေပါပြီ ===="
+            # Emulator Screen ကို ဖမ်းယူပြီး YouTube Live ရဲ့ Server သို့ FFmpeg ဖြင့် တိုက်ရိုက်တွန်းပို့ခြင်း
             adb shell screenrecord --output-format=h264 --size 1280x720 --bit-rate 2000000 - | \
             ffmpeg -re -i - \
               -f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 \
