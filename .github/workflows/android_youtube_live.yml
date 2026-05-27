@@ -1,11 +1,11 @@
-name: Full Android Emulator & YouTube Live Stream (Fixed Auto-Detect)
+name: Full Android Emulator & YouTube Live Stream (Fixed Bash Syntax)
 
 on:
   workflow_dispatch: # Actions Tab ထဲကနေ 'Run workflow' နှိပ်ပြီး မောင်းရန်
 
 jobs:
   live_stream:
-    runs-on: macos-15-intel
+    runs-on: macos-15-intel # တည်ငြိမ်ပြီး အမြန်ဆုံး Intel Mac Runner
 
     steps:
       - name: Checkout Repository Code
@@ -45,28 +45,24 @@ jobs:
           
           script: |
             echo "==== Emulator စတင်တက်လာပါပြီ ===="
-            
             adb wait-for-device
             echo "Android Emulator အဆင်သင့်ဖြစ်ပါပြီ။"
             
-            # ဒေါင်းလုဒ်လုပ်ထားသော သင့် APK ကို သွင်းခြင်း
             echo "App အား Emulator ထဲသို့ ထည့်သွင်းနေပါသည်..."
             adb install target_app.apk
             
-            # --- 🚀 ပြင်ဆင်ချက်အသစ်: adb shell pm သုံးပြီး Package Name ကို ထုတ်ယူခြင်း ---
-            echo "သွင်းထားသော App များထဲမှ တတိယလူ (Third-party) App Package Name ကို ရှာဖွေနေပါသည်..."
-            # Android Emulator ထဲမှာ '3rd party app' အနေနဲ့ သွင်းထားတဲ့ package list ထဲက နောက်ဆုံးတစ်ခုကို ယူပါတယ်
-            PACKAGE_NAME=$(adb shell pm list packages -3 | tail -n 1 | awk -F":" '{print $2}' | tr -d '\r')
-            echo "တွေ့ရှိရသော Package Name: $PACKAGE_NAME"
+            echo "စနစ်အား တည်ငြိမ်စေရန် ၅ စက္ကန့် စောင့်ဆိုင်းနေပါသည်..."
+            sleep 5
             
-            # အကယ်၍ အကြောင်းတစ်ခုခုကြောင့် ရှာမတွေ့ခဲ့ပါက စနစ်မကျပျက်စေရန် check လုပ်ခြင်း
-            if [ -z "$PACKAGE_NAME" ]; then
-              echo "Error: Package Name ရှာမတွေ့ပါ။ စမ်းသပ်ရန် default name အသုံးပြုပါမည်။"
-              PACKAGE_NAME="com.example.myapp"
-            fi
+            echo "သွင်းထားသော Third-party App Package Name ကို ရှာဖွေနေပါသည်..."
+            # Package Name ကို ထုတ်ယူပြီး သန့်စင်ခြင်း
+            PACKAGE_NAME=$(adb shell pm list packages -3 | tail -n 1 | awk -F":" '{print $2}' | tr -d '\r' | xargs)
+            echo "တွေ့ရှိရသော Package Name: '$PACKAGE_NAME'"
             
-            echo "App အား စတင်ဖွင့်လှစ်နေပါသည်..."
-            # ရှာဖွေတွေ့ရှိထားသော Package Name ကို သုံးပြီး အလိုအလျောက် လှမ်းဖွင့်ခြင်း
+            # GitHub Actions Emulator Tool ထဲတွင် အမှားမတက်စေရန် 'if' အား တစ်လိုင်းတည်း စုရေးခြင်း
+            [ -z "$PACKAGE_NAME" ] && echo "Package ရှာမတွေ့သဖြင့် Default Package စမ်းသုံးပါမည်" && PACKAGE_NAME="com.example.myapp"
+            
+            echo "App အား စတင်ဖွင့်လှစ်နေပါသည်: $PACKAGE_NAME"
             adb shell monkey -p $PACKAGE_NAME -c android.intent.category.LAUNCHER 1
             
             sleep 5
