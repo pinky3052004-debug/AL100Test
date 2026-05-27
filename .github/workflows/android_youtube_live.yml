@@ -1,11 +1,11 @@
-name: Full Android Emulator & YouTube Live Stream (Final Production)
+name: Full Android Emulator & YouTube Live Stream (Robust Fix)
 
 on:
-  workflow_dispatch: # Actions Tab ထဲကနေ 'Run workflow' နှိပ်ပြီး မောင်းရန်
+  workflow_dispatch:
 
 jobs:
   live_stream:
-    runs-on: macos-15-intel # တည်ငြိမ်ပြီး အမြန်ဆုံး Intel Mac Runner
+    runs-on: macos-15-intel
 
     steps:
       - name: Checkout Repository Code
@@ -35,7 +35,7 @@ jobs:
       - name: Setup and Run Android Emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 29          # Android 10 (ပေါ့ပါးမြန်ဆန်သည်)
+          api-level: 29          # Android 10
           target: google_apis    
           arch: x86_64           
           force-avd-creation: false
@@ -44,20 +44,26 @@ jobs:
           
           script: |
             echo "==== Emulator စတင်တက်လာပါပြီ ===="
+            # ၁။ Emulator Device အခြေခံပိုင်း ပွင့်လာအောင် စောင့်ခြင်း
             adb wait-for-device
-            echo "Android Emulator အဆင်သင့်ဖြစ်ပါပြီ။"
             
+            # 🚀 ဖြည့်စွက်ချက်- Emulator ၏ Package Manager နှင့် System တွင်း ဝန်ဆောင်မှုများ အပြည့်အဝ အဆင်သင့်ဖြစ်စေရန် စက္ကန့် ၂၀ ကြိုတင်စောင့်ဆိုင်းခြင်း
+            echo "Emulator System Services များ အပြီးသတ်ပွင့်လာစေရန် စက္ကန့် ၂၀ စောင့်ဆိုင်းနေပါသည်..."
+            sleep 20
+            
+            # ၂။ အဆင့်မြှင့်ထားသော adb command များဖြင့် စိတ်ချရစွာ သွင်းခြင်း
             echo "App အား Emulator ထဲသို့ ထည့်သွင်းနေပါသည်..."
-            adb install target_app.apk
+            adb install -r --user 0 --bypass-low-target-sdk target_app.apk
             
-            echo "စနစ်အား တည်ငြိမ်စေရန် ၅ စက္ကန့် စောင့်ဆိုင်းနေပါသည်..."
+            echo "စနစ်အား တည်ငြိမ်စေရန် ၅ စက္ကန့် ထပ်မံစောင့်ဆိုင်းနေပါသည်..."
             sleep 5
             
+            # ၃။ App အား Package Name အတိအကျဖြင့် လှမ်းဖွင့်ခြင်း
             echo "App အား စတင်ဖွင့်လှစ်နေပါသည်: network.kalock.myanmar2d"
             adb shell monkey -p network.kalock.myanmar2d -c android.intent.category.LAUNCHER 1
             
             sleep 5
 
+            # ၄။ YouTube Live Stream စတင်ခြင်း
             echo "==== YouTube သို့ Live Stream စတင်လွှင့်နေပါပြီ ===="
-            # 🚀 ပြင်ဆင်ချက်- ကွဲမထွက်သွားစေရန် FFmpeg Stream Command ကို တစ်လိုင်းတည်း စုစည်းရေးသားထားသည်။
             adb shell screenrecord --output-format=h264 --size 1280x720 --bit-rate 2000000 - | ffmpeg -re -i - -f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 -c:v copy -c:a aac -b:a 128k -f flv "rtmp://a.rtmp.youtube.com/live2/${{ secrets.YOUTUBE_STREAM_KEY }}"
