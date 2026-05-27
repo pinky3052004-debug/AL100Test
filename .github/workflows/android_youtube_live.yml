@@ -1,0 +1,75 @@
+name: Full Android Emulator & YouTube Live Stream
+
+on:
+  workflow_dispatch: # GitHub Actions ထဲကနေ လက်နဲ့ 'Run workflow' နှိပ်ပြီး မောင်းရမည့်စနစ်
+
+jobs:
+  live_stream:
+    # Android Emulator ပတ်ဖို့ Hardware Acceleration ပါတဲ့ Intel macOS Runner ကို သုံးရပါမယ်။
+    runs-on: macos-15-intel
+
+    steps:
+      - name: Checkout Repository Code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Install FFmpeg
+        run: |
+          brew update
+          brew install ffmpeg
+
+      - name: Download Target Android APK
+        run: |
+          echo "App APK ကို စတင်ဒေါင်းလုဒ်ဆွဲနေသည်..."
+          # ⚠️ အောက်ပါနေရာတွင် မိမိသွင်းချင်သော App ၏ တိုက်ရိုက် APK Link အစစ်အမှန်ကို အစားထိုးပေးပါ။
+          # နမူနာအနေဖြင့် သေးငယ်သော Open-source App တစ်ခုကို ပြသထားသည်။
+          curl -L -o target_app.apk "https://github.com/KieronQuinn/SmartSpacer/releases/download/1.6.1/smartspacer-release.apk"
+
+      - name: Setup and Run Android Emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 31          # Android 12 (ပြဿနာအနည်းဆုံးနှင့် တည်ငြိမ်ဆုံး API Level)
+          target: google_apis     # Google Play Services ပါဝင်သော စနစ်
+          arch: x86_64            # Intel Mac အတွက် အမြန်ဆုံး ဗိသုကာစနစ်
+          force-avd-creation: false
+          # Emulator မောင်းနှင်ရာတွင် CPU သက်သာစေရန် Screen မပြဘဲ (Headless) မောင်းနှင်သည့် Option များ
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          disable-animations: true
+          
+          script: |
+            echo "==== Emulator စတင်တက်လာပါပြီ ===="
+            
+            # ၁။ Emulator အလုပ်လုပ်၊ မလုပ် စစ်ဆေးခြင်း
+            adb wait-for-device
+            echo "Android Emulator အဆင်သင့်ဖြစ်ပါပြီ။"
+            
+            # ၂။ ဒေါင်းလုဒ်ဆွဲထားသော APK ကို Emulator ထဲသို့ သွင်းခြင်း
+            echo "App အား Emulator ထဲသို့ ထည့်သွင်းနေပါသည်..."
+            adb install target_app.apk
+            
+            # ၃။ သွင်းထားသော App ကို အလိုအလျောက် လှမ်းဖွင့်ခြင်း
+            # (မှတ်ချက် - App ၏ တရားဝင် Package Name ကို သိရန်လိုအပ်သည်။ ဥပမာ - com.example.app)
+            # အောက်ပါလိုင်းသည် နမူနာ သွင်းထားသော app အား ဖွင့်ရန် ဖြစ်သည်
+            echo "App အား စတင်ဖွင့်လှစ်နေပါသည်..."
+            adb shell monkey -p com.kieronquinn.app.smartspacer -c android.intent.category.LAUNCHER 1
+            
+            # စက္ကန့်အနည်းငယ် စောင့်ပါ (App ပွင့်လာစေရန်)
+            sleep 5
+
+            # ၄။ Emulator Screen ကို ဖမ်းယူပြီး YouTube Live သို့ FFmpeg ဖြင့် တွန်းပို့ခြင်း
+            echo "==== YouTube သို့ Live Stream စတင်လွှင့်နေပါပြီ ===="
+            echo "Live ကို ရပ်တန့်လိုပါက Actions ကို 'Cancel run' နှိပ်နိုင်ပါသည်။"
+            
+            # adb screenrecord သည် Android စခရင်ကို ဗီဒီယိုအဖြစ် ထုတ်ပေးပြီး pipe (|) စနစ်ဖြင့် FFmpeg ထံ ပို့ပေးသည်။
+            # FFmpeg သည် ရရှိလာသော ဗီဒီယိုကို audio အတု (anullsrc) နှင့်ပေါင်းကာ YouTube သို့ လွှင့်ပေးသည်။
+            adb shell screenrecord --output-format=h264 --size 1280x720 --bit-rate 2000000 - | \
+            ffmpeg -re -i - \
+              -f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 \
+              -c:v copy \
+              -c:a aac -b:a 128k \
+              -f flv "rtmp://a.rtmp.youtube.com/live2/${{ secrets.YOUTUBE_STREAM_KEY }}"
