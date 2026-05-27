@@ -1,4 +1,4 @@
-name: Full Android Emulator & YouTube Live Stream (Final Fixed)
+name: Full Android Emulator & YouTube Live Stream (Final Production)
 
 on:
   workflow_dispatch: # Actions Tab ထဲကနေ 'Run workflow' နှိပ်ပြီး မောင်းရန်
@@ -35,7 +35,7 @@ jobs:
       - name: Setup and Run Android Emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 29          # Android 10 (ပေါ့ပါးပြီး Actions ပေါ်တွင် အမြန်ဆုံး တက်ပါသည်)
+          api-level: 29          # Android 10 (ပေါ့ပါးမြန်ဆန်သည်)
           target: google_apis    
           arch: x86_64           
           force-avd-creation: false
@@ -53,17 +53,11 @@ jobs:
             echo "စနစ်အား တည်ငြိမ်စေရန် ၅ စက္ကန့် စောင့်ဆိုင်းနေပါသည်..."
             sleep 5
             
-            # 🚀 အဓိက ပြင်ဆင်ချက်- သင့် App ရဲ့ Package Name ကို တိုက်ရိုက် တိတိကျကျ ဖွင့်ခိုင်းခြင်း
             echo "App အား စတင်ဖွင့်လှစ်နေပါသည်: network.kalock.myanmar2d"
             adb shell monkey -p network.kalock.myanmar2d -c android.intent.category.LAUNCHER 1
             
             sleep 5
 
             echo "==== YouTube သို့ Live Stream စတင်လွှင့်နေပါပြီ ===="
-            # Emulator Screen ကို ဖမ်းယူပြီး YouTube Live ရဲ့ Server သို့ FFmpeg ဖြင့် တိုက်ရိုက်တွန်းပို့ခြင်း
-            adb shell screenrecord --output-format=h264 --size 1280x720 --bit-rate 2000000 - | \
-            ffmpeg -re -i - \
-              -f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 \
-              -c:v copy \
-              -c:a aac -b:a 128k \
-              -f flv "rtmp://a.rtmp.youtube.com/live2/${{ secrets.YOUTUBE_STREAM_KEY }}"
+            # 🚀 ပြင်ဆင်ချက်- ကွဲမထွက်သွားစေရန် FFmpeg Stream Command ကို တစ်လိုင်းတည်း စုစည်းရေးသားထားသည်။
+            adb shell screenrecord --output-format=h264 --size 1280x720 --bit-rate 2000000 - | ffmpeg -re -i - -f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 -c:v copy -c:a aac -b:a 128k -f flv "rtmp://a.rtmp.youtube.com/live2/${{ secrets.YOUTUBE_STREAM_KEY }}"
