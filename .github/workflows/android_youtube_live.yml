@@ -1,4 +1,4 @@
-name: Full Android Emulator & YouTube Live Stream (macOS Scrcpy Fixed)
+name: Full Android Emulator & YouTube Live Stream (Final Fixed Production)
 
 on:
   workflow_dispatch:
@@ -61,5 +61,5 @@ jobs:
             sleep 5
 
             echo "==== YouTube သို့ မပြတ်တောက်သော Live Stream စတင်လွှင့်နေပါပြီ ===="
-            # 🚀 🚀 🚀 macOS နှင့် ကိုက်ညီအောင် Linux သီးသန့် parameter ဖြစ်သော --v4l2-sink အား ဖြုတ်လိုက်ပါသည်
-            scrcpy --no-audio --no-window --max-size=1280 --video-bit-rate=2M --tunnel-disabled --raw-video-stream - | ffmpeg -re -i - -f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 -c:v copy -c:a aac -b:a 128k -f flv "rtmp://a.rtmp.youtube.com/live2/${{ secrets.YOUTUBE_STREAM_KEY }}"
+            # 🚀 🚀 🚀 ပြင်ဆင်ချက်- ဗားရှင်းအသစ်တွင် အမှားတက်စေသော --tunnel-disabled အား ဖြုတ်လိုက်ပါသည်
+            scrcpy --no-audio --no-window --max-size=1280 --video-bit-rate=2M --raw-video-stream - | ffmpeg -re -i - -f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 -c:v copy -c:a aac -b:a 128k -f flv "rtmp://a.rtmp.youtube.com/live2/${{ secrets.YOUTUBE_STREAM_KEY }}"
