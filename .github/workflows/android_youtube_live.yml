@@ -1,11 +1,11 @@
-name: Full Android Emulator & YouTube Live Stream (AL100Test Auto-Detect)
+name: Full Android Emulator & YouTube Live Stream (Fixed Auto-Detect)
 
 on:
   workflow_dispatch: # Actions Tab ထဲကနေ 'Run workflow' နှိပ်ပြီး မောင်းရန်
 
 jobs:
   live_stream:
-    runs-on: macos-15-intel # တည်ငြိမ်ပြီး အမြန်ဆုံး Intel Mac Runner
+    runs-on: macos-15-intel
 
     steps:
       - name: Checkout Repository Code
@@ -53,10 +53,17 @@ jobs:
             echo "App အား Emulator ထဲသို့ ထည့်သွင်းနေပါသည်..."
             adb install target_app.apk
             
-            # --- 🚀 Package Name ကို APK ထဲကနေ အလိုအလျောက် ရှာဖွေခြင်း ---
-            echo "App ၏ Package Name အား ရှာဖွေနေပါသည်..."
-            PACKAGE_NAME=$($ANDROID_HOME/build-tools/34.0.0/aapt dump badging target_app.apk | awk -F"'" '/package: name=/ {print $2}')
+            # --- 🚀 ပြင်ဆင်ချက်အသစ်: adb shell pm သုံးပြီး Package Name ကို ထုတ်ယူခြင်း ---
+            echo "သွင်းထားသော App များထဲမှ တတိယလူ (Third-party) App Package Name ကို ရှာဖွေနေပါသည်..."
+            # Android Emulator ထဲမှာ '3rd party app' အနေနဲ့ သွင်းထားတဲ့ package list ထဲက နောက်ဆုံးတစ်ခုကို ယူပါတယ်
+            PACKAGE_NAME=$(adb shell pm list packages -3 | tail -n 1 | awk -F":" '{print $2}' | tr -d '\r')
             echo "တွေ့ရှိရသော Package Name: $PACKAGE_NAME"
+            
+            # အကယ်၍ အကြောင်းတစ်ခုခုကြောင့် ရှာမတွေ့ခဲ့ပါက စနစ်မကျပျက်စေရန် check လုပ်ခြင်း
+            if [ -z "$PACKAGE_NAME" ]; then
+              echo "Error: Package Name ရှာမတွေ့ပါ။ စမ်းသပ်ရန် default name အသုံးပြုပါမည်။"
+              PACKAGE_NAME="com.example.myapp"
+            fi
             
             echo "App အား စတင်ဖွင့်လှစ်နေပါသည်..."
             # ရှာဖွေတွေ့ရှိထားသော Package Name ကို သုံးပြီး အလိုအလျောက် လှမ်းဖွင့်ခြင်း
