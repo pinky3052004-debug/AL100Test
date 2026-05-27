@@ -1,11 +1,23 @@
-name: Full Android Emulator & YouTube Live Stream (Final Fixed)
+name: Automated Scheduled Live Stream (Full Auto Start & End)
 
 on:
+  # ၁။ စမ်းသပ်လိုလျှင် သို့မဟုတ် လူကိုယ်တိုင် လွှင့်လိုလျှင် Run workflow နှိပ်၍ ရစေရန်
   workflow_dispatch:
+  
+  # ၂။ နေ့စဉ် သတ်မှတ်ချိန်တွင် အလိုအလျောက် Live စတင်ရန် (Auto Start)
+  # ⚠️ GitHub Cron သည် UTC (စံတော်ချိန်) ကို သုံးသဖြင့် မြန်မာစံတော်ချိန်ထက် ၆ နာရီခွဲ နှုတ်ရပါမည်။
+  # နမူနာ - မြန်မာစံတော်ချိန် နေ့စဉ် ညနေ ၆:၀၀ နာရီ (18:00 MMT) တွင် အလိုအလျောက် လွှင့်မည့်ပုံစံ
+  schedule:
+    - cron: '30 11 * * *' 
 
 jobs:
   live_stream:
     runs-on: macos-15-intel
+    
+    # 🚀 [AUTO END သတ်မှတ်ချက်] - ဤနေရာတွင် စုစုပေါင်း အချိန်ကန့်သတ်ချက် ပေးရပါမည်။
+    # အကယ်၍ Live အား ၂ နာရီ (မိနစ် ၁၂၀) ပြည့်လျှင် အလိုအလျောက် စနစ်ပိတ်စေလိုပါက 120 ဟု ရေးပါ။
+    # (မှတ်ချက် - Emulator တက်ချိန် မိနစ်အနည်းငယ် အပိုဆောင်းတွက်ချက်ပေးရန် လိုအပ်ပါသည်)
+    timeout-minutes: 130 
 
     steps:
       - name: Checkout Repository Code
@@ -22,7 +34,7 @@ jobs:
           brew update
           brew install ffmpeg scrcpy
 
-      # သင့်ရဲ့ GitHub Release (v1.0.0) ထဲမှ my_app.apk ကို တိုက်ရိုက်ဒေါင်းလုဒ်ဆွဲခြင်း
+      # သင့်ရီပို၏ Release ဗားရှင်း v1.0.0 ထဲမှ APK ကို ဒေါင်းလုဒ်ဆွဲခြင်း
       - name: Download APK from GitHub Releases
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -55,16 +67,17 @@ jobs:
             
             echo "==== Emulator ၏ စနစ်တစ်ခုလုံး အပြီးသတ်ပွင့်သွားပါပြီ ===="
             echo "စနစ်များ တည်ငြိမ်ပြီး အလုပ်လုပ်နိုင်ရန် စက္ကန့် ၂၀ ထပ်မံစောင့်ဆိုင်းနေပါသည်..."
-            sleep 60
+            sleep 20
             
             # ၃။ App ကို လှမ်းဖွင့်ခြင်း
             echo "App အား စတင်ဖွင့်လှစ်နေပါသည်: network.kalock.myanmar2d"
             adb shell monkey -p network.kalock.myanmar2d -c android.intent.category.LAUNCHER 1
             sleep 5
 
-            # ၄။ YouTube သို့ Live Stream လွှင့်ခြင်း
             echo "==== YouTube သို့ မပြတ်တောက်သော Live Stream စတင်လွှင့်နေပါပြီ ===="
+            
+            # Scrcpy Window-less Driver အား ခေါ်ယူခြင်း
             export SDL_VIDEODRIVER=dummy
             
-            # 🚀 🚀 🚀 ပြင်ဆင်ချက်- scrcpy တွင် --record-format=mkv ထည့်သွင်းပြီး ffmpeg ဘက်မှ format အမှားမတက်အောင် ဖြေရှင်းထားသည်
-            scrcpy --no-audio --no-window --max-size=1280 --video-bit-rate=2M --video-codec=h264 --record=- --record-format=mkv | ffmpeg -re -i - -f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 -c:v copy -c:a aac -b:a 128k -f flv "rtmp://a.rtmp.youtube.com/live2/${{ secrets.YOUTUBE_STREAM_KEY }}"
+            # ၄။ ရေရှည်မောင်းနှင်မည့် Live Stream Pipe (Scrcpy v4.0+ နှင့် FFmpeg အချောသတ်ပေါင်းစပ်မှု)
+            SDL_VIDEODRIVER=dummy scrcpy --no-audio --no-window --max-size=1280 --video-bit-rate=2M --video-codec=h264 --record=- --record-format=mkv | ffmpeg -re -i - -f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 -c:v copy -c:a aac -b:a 128k -f flv "rtmp://a.rtmp.youtube.com/live2/${{ secrets.YOUTUBE_STREAM_KEY }}"
