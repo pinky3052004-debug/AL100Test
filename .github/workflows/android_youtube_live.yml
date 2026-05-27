@@ -1,4 +1,4 @@
-name: Full Android Emulator & YouTube Live Stream (Final Fixed Production)
+name: Full Android Emulator & YouTube Live Stream (Infinite Stream Fixed)
 
 on:
   workflow_dispatch:
@@ -17,10 +17,11 @@ jobs:
           distribution: 'zulu'
           java-version: '17'
 
-      - name: Install FFmpeg
+      - name: Install FFmpeg & Scrcpy
         run: |
           brew update
-          brew install ffmpeg
+          # scrcpy ကိုပါ တစ်ခါတည်း သွင်းလိုက်ခြင်းဖြင့် ပိုမိုတည်ငြိမ်သော stream ကို ရရှိမည်
+          brew install ffmpeg scrcpy
 
       # သင့်ရဲ့ GitHub Release (v1.0.0) ထဲမှ my_app.apk ကို တိုက်ရိုက်ဒေါင်းလုဒ်ဆွဲခြင်း
       - name: Download APK from GitHub Releases
@@ -47,23 +48,19 @@ jobs:
             adb wait-for-device
             
             echo "Emulator Package Manager ပွင့်လာသည်အထိ စောင့်ဆိုင်းနေပါသည်..."
-            # 🚀 🚀 ပြင်ဆင်ချက်အသစ် - Syntax Error မတက်စေရန် while loop တစ်ခုလုံးကို တစ်လိုင်းတည်း စုစည်းလိုက်သည်
             while [ "$(adb shell getprop sys.boot_completed | tr -d '\r')" != "1" ]; do echo "Emulator Boot တက်ရန် စောင့်ဆိုင်းနေဆဲဖြစ်ပါသည် (၅ စက္ကန့် ထပ်စောင့်ပါမည်)..."; sleep 5; done
             
             echo "==== Emulator ၏ စနစ်တစ်ခုလုံး အပြီးသတ်ပွင့်သွားပါပြီ ===="
-            echo "တည်ငြိမ်စေရန် ၅ စက္ကန့် ထပ်မံစောင့်ပါမည်..."
             sleep 5
             
             echo "App အား Emulator ထဲသို့ ထည့်သွင်းနေပါသည်..."
             adb install -r target_app.apk
-            
-            echo "သွင်းပြီးနောက် တည်ငြိမ်စေရန် ၅ စက္ကန့် စောင့်ဆိုင်းနေပါသည်..."
             sleep 5
             
             echo "App အား စတင်ဖွင့်လှစ်နေပါသည်: network.kalock.myanmar2d"
             adb shell monkey -p network.kalock.myanmar2d -c android.intent.category.LAUNCHER 1
-            
             sleep 5
 
-            echo "==== YouTube သို့ Live Stream စတင်လွှင့်နေပါပြီ ===="
-            adb shell screenrecord --output-format=h264 --size 1280x720 --bit-rate 2000000 - | ffmpeg -re -i - -f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 -c:v copy -c:a aac -b:a 128k -f flv "rtmp://a.rtmp.youtube.com/live2/${{ secrets.YOUTUBE_STREAM_KEY }}"
+            echo "==== YouTube သို့ မပြတ်တောက်သော Live Stream စတင်လွှင့်နေပါပြီ ===="
+            # 🚀 🚀 🚀 ပြင်ဆင်ချက်အသစ် - screenrecord အစား ဆော့ဖ်ဝဲလ်ကျပ်ခြင်းမရှိသော scrcpy စနစ်ဖြင့် ဗီဒီယိုဆွဲထုတ်ခြင်း
+            scrcpy --v4l2-sink=/dev/null --no-window --max-size=1280 --video-bit-rate=2M --tunnel-disabled --raw-video-stream - | ffmpeg -re -i - -f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 -c:v copy -c:a aac -b:a 128k -f flv "rtmp://a.rtmp.youtube.com/live2/${{ secrets.YOUTUBE_STREAM_KEY }}"
