@@ -1,4 +1,4 @@
-name: Full Android Emulator & YouTube Live Stream (AL100Test Release)
+name: Full Android Emulator & YouTube Live Stream (AL100Test Auto-Detect)
 
 on:
   workflow_dispatch: # Actions Tab ထဲကနေ 'Run workflow' နှိပ်ပြီး မောင်းရန်
@@ -28,11 +28,8 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           echo "GitHub Release ထဲမှ my_app.apk အား ဒေါင်းလုဒ်ဆွဲနေသည်..."
-          
-          # သင့်လင့်ခ်အတိုင်း ရီပိုထဲမှ my_app.apk ကို အတိအကျ ဆွဲချခြင်း
           gh release download v1.0.0 --repo "pinky3052004-debug/AL100Test" --pattern "my_app.apk" --clobber
           
-          # ဒေါင်းလုဒ်လုပ်ပြီးသားဖိုင်ကို အလုပ်လုပ်ရလွယ်ကူအောင် နာမည်ပြောင်းခြင်း
           mv my_app.apk target_app.apk
           echo "ဒေါင်းလုဒ် အောင်မြင်ပါပြီ။"
 
@@ -52,15 +49,18 @@ jobs:
             adb wait-for-device
             echo "Android Emulator အဆင်သင့်ဖြစ်ပါပြီ။"
             
-            # ဒေါင်းလုဒ်လုပ်ထားသော သင့် my_app.apk ကို သွင်းခြင်း
+            # ဒေါင်းလုဒ်လုပ်ထားသော သင့် APK ကို သွင်းခြင်း
             echo "App အား Emulator ထဲသို့ ထည့်သွင်းနေပါသည်..."
             adb install target_app.apk
             
-            # သွင်းပြီးသွားသော App ကို လှမ်းဖွင့်ခြင်း
+            # --- 🚀 Package Name ကို APK ထဲကနေ အလိုအလျောက် ရှာဖွေခြင်း ---
+            echo "App ၏ Package Name အား ရှာဖွေနေပါသည်..."
+            PACKAGE_NAME=$($ANDROID_HOME/build-tools/34.0.0/aapt dump badging target_app.apk | awk -F"'" '/package: name=/ {print $2}')
+            echo "တွေ့ရှိရသော Package Name: $PACKAGE_NAME"
+            
             echo "App အား စတင်ဖွင့်လှစ်နေပါသည်..."
-            # ⚠️ 'com.example.myapp' နေရာတွင် သင့် App ၏ Package Name အမှန်ကို ပြောင်းထည့်ပေးရန် လိုအပ်ပါသည်။
-            # (ဥပမာ- com.pinky.al100test စသဖြင့် သင့် App ဆောက်စဉ်က သတ်မှတ်ခဲ့သော ID ဖြစ်သည်)
-            adb shell monkey -p com.example.myapp -c android.intent.category.LAUNCHER 1
+            # ရှာဖွေတွေ့ရှိထားသော Package Name ကို သုံးပြီး အလိုအလျောက် လှမ်းဖွင့်ခြင်း
+            adb shell monkey -p $PACKAGE_NAME -c android.intent.category.LAUNCHER 1
             
             sleep 5
 
