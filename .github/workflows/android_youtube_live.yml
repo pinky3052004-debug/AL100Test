@@ -1,4 +1,4 @@
-name: Automated Scheduled Live Stream (YouTube Studio Fix)
+name: Automated Scheduled Live Stream (YouTube Codec Fix)
 
 on:
   workflow_dispatch:
@@ -6,7 +6,6 @@ on:
 jobs:
   live_stream:
     runs-on: macos-15-intel
-    # ⚠️ Job Level timeout ကို ဖြုတ်ပြီး အောက်က တူးလ်ထဲတွင် ပြောင်းထည့်ပါမည်။
 
     steps:
       - name: Checkout Repository Code
@@ -39,8 +38,6 @@ jobs:
           force-avd-creation: false
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none -memory 3072 -cores 2
           disable-animations: true
-          
-          # 🚀 [AUTO END အပိတ်စနစ်သစ်] - Emulator Runner ၏ script အား မိနစ် ၁၂၀ (၂ နာရီ) ပြည့်လျှင် ပိတ်ခိုင်းခြင်း
           script-timeout-minutes: 120
           
           script: |
@@ -63,5 +60,6 @@ jobs:
             
             export SDL_VIDEODRIVER=dummy
             
-            # 🚀 🚀 🚀 YouTube Studio တွင် ပုံပေါ်လာစေရန် -r 30 (Framerate) နှင့် Video Parameters များကို အတင်းသတ်မှတ်ပေးလိုက်ခြင်း
-            SDL_VIDEODRIVER=dummy scrcpy --no-audio --no-window --max-size=1280 --video-bit-rate=2M --video-codec=h264 --record=- --record-format=mkv | ffmpeg -re -r 30 -i - -f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 -c:v copy -s 1280x720 -b:v 2M -c:a aac -b:a 128k -f flv "rtmp://a.rtmp.youtube.com/live2/${{ secrets.YOUTUBE_STREAM_KEY }}"
+            # 🚀 🚀 🚀 ပြင်ဆင်ချက် -copy နေရာတွင် YouTube အကြိုက်ဆုံး -c:v libx264 သို့ ပြောင်းလဲပြီး ကောင်းမွန်စွာ Re-encode လုပ်ခိုင်းထားပါသည်။
+            # YouTube Stream တည်ငြိမ်စေရန် Keyframe Interval (-g 60) ကိုပါ ထည့်သွင်းပေးထားပါသည်။
+            SDL_VIDEODRIVER=dummy scrcpy --no-audio --no-window --max-size=1280 --video-bit-rate=2M --video-codec=h264 --record=- --record-format=mkv | ffmpeg -re -i - -f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 -c:v libx264 -preset veryfast -g 60 -s 1280x720 -b:v 2M -c:a aac -b:a 128k -f flv "rtmp://a.rtmp.youtube.com/live2/${{ secrets.YOUTUBE_STREAM_KEY }}"
