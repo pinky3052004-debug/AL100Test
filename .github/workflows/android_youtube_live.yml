@@ -50,11 +50,11 @@ jobs:
             while [ "$(adb shell getprop sys.boot_completed | tr -d '\r')" != "1" ]; do sleep 5; done
             
             echo "==== Emulator ၏ စနစ်တစ်ခုလုံး အပြီးသတ်ပွင့်သွားပါပြီ ===="
-            sleep 20
+            sleep 30
             
             echo "App အား စတင်ဖွင့်လှစ်နေပါသည်: network.kalock.myanmar2d"
             adb shell monkey -p network.kalock.myanmar2d -c android.intent.category.LAUNCHER 1
-            sleep 5
+            sleep 15
 
             echo "==== YouTube သို့ မပြတ်တောက်သော Live Stream စတင်လွှင့်နေပါပြီ ===="
             
