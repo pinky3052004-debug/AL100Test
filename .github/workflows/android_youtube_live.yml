@@ -62,4 +62,4 @@ jobs:
             
             # 🚀 🚀 🚀 ပြင်ဆင်ချက် -copy နေရာတွင် YouTube အကြိုက်ဆုံး -c:v libx264 သို့ ပြောင်းလဲပြီး ကောင်းမွန်စွာ Re-encode လုပ်ခိုင်းထားပါသည်။
             # YouTube Stream တည်ငြိမ်စေရန် Keyframe Interval (-g 60) ကိုပါ ထည့်သွင်းပေးထားပါသည်။
-            SDL_VIDEODRIVER=dummy scrcpy --no-audio --no-window --max-size=1280 --video-bit-rate=2M --video-codec=h264 --record=- --record-format=mkv | ffmpeg -re -i - -f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 -c:v libx264 -preset veryfast -g 60 -s 1280x720 -b:v 2M -c:a aac -b:a 128k -f flv "rtmp://a.rtmp.youtube.com/live2/${{ secrets.YOUTUBE_STREAM_KEY }}"
+            SDL_VIDEODRIVER=dummy scrcpy --no-audio --no-window --max-size=1280 --video-bit-rate=2M --video-codec=h264 --record=- --record-format=mkv | ffmpeg -re -i - -f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 -c:v libx264 -preset veryfast -g 60 -s 720x1280 -b:v 2M -c:a aac -b:a 128k -f flv "rtmp://a.rtmp.youtube.com/live2/${{ secrets.YOUTUBE_STREAM_KEY }}"
