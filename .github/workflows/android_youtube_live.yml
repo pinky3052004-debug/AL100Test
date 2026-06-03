@@ -46,25 +46,19 @@ jobs:
             echo "==== Emulator စတင်တက်လာပါပြီ ===="
             adb wait-for-device
             
-            # 🚀 [အဆင့်မြှင့်တင်ချက် ၁] - Emulator Core System အပြီးသတ် Boot တက်သည်အထိ အရင်စောင့်ခြင်း (Syntax Fix ပြုလုပ်ပြီး)
+            # 🚀 [အဆင့်မြှင့်တင်ချက် ၁] - Single-line format သို့ ပြောင်းလဲ၍ Syntax Error ကို အပြီးတိုင်ဖြေရှင်းခြင်း
             echo "Emulator Core Services များ အပြီးသတ်ပွင့်လာသည်အထိ စောင့်ဆိုင်းနေပါသည်..."
-            while [ "$(adb shell getprop sys.boot_completed | tr -d '\r')" != "1" ]; do
-              echo "Emulator Boot တက်ရန် စောင့်ဆိုင်းနေဆဲဖြစ်ပါသည် (၁၅ စက္ကန့် ထပ်စောင့်ပါမည်)..."
-              sleep 15
-            done
+            while [ "$(adb shell getprop sys.boot_completed | tr -d '\r')" != "1" ]; do echo "Emulator Boot တက်ရန် စောင့်ဆိုင်းနေဆဲဖြစ်ပါသည် (၁၅ စက္ကန့် ထပ်စောင့်ပါမည်)..."; sleep 15; done
             
-            # 🚀 [အဆင့်မြှင့်တင်ချက် ၂] - Package Manager (pm) တကယ် အလုပ်လုပ်မလုပ် ထပ်မံစစ်ဆေးခြင်း (Syntax Fix ပြုလုပ်ပြီး)
+            # 🚀 [အဆင့်မြှင့်တင်ချက် ၂] - Single-line format ဖြင့် Package Manager ကို စစ်ဆေးခြင်း
             echo "Package Manager Service အဆင်သင့်ဖြစ်မဖြစ် စစ်ဆေးနေပါသည်..."
-            while ! adb shell pm path android >/dev/null 2>&1; do
-              echo "Package Manager အဆင်သင့်မဖြစ်သေးပါ။ စက္ကန့်အနည်းငယ် ထပ်မံစောင့်ဆိုင်းပါမည်..."
-              sleep 5
-            done
+            while ! adb shell pm path android >/dev/null 2>&1; do echo "Package Manager အဆင်သင့်မဖြစ်သေးပါ။ စက္ကန့်အနည်းငယ် ထပ်မံစောင့်ဆိုင်းပါမည်..."; sleep 5; done
             
             echo "==== Emulator ၏ စနစ်တစ်ခုလုံးနှင့် Package Manager အပြီးသတ်ပွင့်သွားပါပြီ ===="
             echo "စနစ်လုံးဝ အနည်ထိုင်သွားစေရန် စက္ကန့် ၃၀ ထပ်မံစောင့်ဆိုင်းပါမည်..."
             sleep 30
             
-            # 🚀 [အဆင့်မြှင့်တင်ချက် ၃] - အားလုံးစိတ်ချရပြီဆိုမှ APK သွင်းခြင်း
+            # 🚀 [အဆင့်မြှင့်တင်ချက် ၃] - APK သွင်းခြင်း
             echo "App အား Emulator အတွင်းသို့ စတင်ထည့်သွင်းနေပါသည်..."
             adb install -r target_app.apk
             sleep 15
