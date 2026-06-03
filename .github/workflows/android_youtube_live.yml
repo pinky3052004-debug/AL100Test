@@ -77,6 +77,16 @@ jobs:
             echo "==== YouTube သို့ မပြတ်တောက်သော Live Stream စတင်လွှင့်နေပါပြီ ===="
             export SDL_VIDEODRIVER=dummy
             
-            # ၅။ YouTube သို့ Live လွှင့်မည့် ပိုက်လိုင်း (ဒေါင်လိုက် 720x1280 ဗားရှင်း)
-            # အကယ်၍ YouTube Studio တွင် Dual Stream ကို ပိတ်ထားပါက 720x1280 နေရာတွင် 1280x720 ဟု ပြောင်းလဲနိုင်ပါသည်။
-            SDL_VIDEODRIVER=dummy scrcpy --no-audio --no-window --max-size=1280 --video-bit-rate=2M --video-codec=h264 --record=- --record-format=mkv | ffmpeg -re -i - -f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 -c:v libx264 -preset veryfast -g 60 -s 720x1280 -b:v 2M -c:a aac -b:a 128k -f flv "rtmp://a.rtmp.youtube.com/live2/${{ secrets.YOUTUBE_STREAM_KEY }}"
+            # 🚀 [အဆင့်မြှင့်တင်ချက် ၄] - Broken Pipe မဖြစ်စေရန်နှင့် Stream လုံးဝတည်ငြိမ်စေရန် ပြင်ဆင်ထားသော ပိုက်လိုင်း
+            # ၁။ --record-format ကို ဖျောက်ပြီး raw H.264 video stream ကိုပဲ ပို့ပေးသည်။
+            # ၂။ ffmpeg packet buffer ကို 1024 အထိ မြှင့်တင်ပြီး GitHub Actions Runner ရဲ့ CPU ကြောင့် လိုင်းမပြတ်အောင် ကာကွယ်သည်။
+            # ၃။ real-time flag (-re) ကို ဖယ်ရှားပြီး အလိုအလျောက် scale ညှိပေးမည့် video filter ကို သုံးထားသည်။
+            
+            scrcpy --no-audio --no-window --max-size=1280 --video-bit-rate=2M --video-codec=h264 --push-target=none --record=- | \
+            ffmpeg -thread_queue_size 1024 -i - \
+            -f lavfi -thread_queue_size 1024 -i anullsrc=channel_layout=stereo:sample_rate=44100 \
+            -c:v libx264 -preset veryfast -tune zerolatency -g 60 \
+            -vf "scale=720:1280:force_original_aspect_ratio=decrease,pad=720:1280:(ow-iw)/2:(oh-ih)/2,format=yuv420p" \
+            -b:v 2M -maxrate 2M -bufsize 4M \
+            -c:a aac -b:a 128k \
+            -f flv "rtmp://a.rtmp.youtube.com/live2/${{ secrets.YOUTUBE_STREAM_KEY }}"
