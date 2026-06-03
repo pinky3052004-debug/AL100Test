@@ -46,14 +46,14 @@ jobs:
             echo "==== Emulator စတင်တက်လာပါပြီ ===="
             adb wait-for-device
             
-            # 🚀 [အဆင့်မြှင့်တင်ချက် ၁] - Emulator Core System အပြီးသတ် Boot တက်သည်အထိ အရင်စောင့်ခြင်း
+            # 🚀 [အဆင့်မြှင့်တင်ချက် ၁] - Emulator Core System အပြီးသတ် Boot တက်သည်အထိ အရင်စောင့်ခြင်း (Syntax Fix ပြုလုပ်ပြီး)
             echo "Emulator Core Services များ အပြီးသတ်ပွင့်လာသည်အထိ စောင့်ဆိုင်းနေပါသည်..."
-            while [ "$(adb shell getprop sys.boot_completed | tr -d '\r')" != "1" ]; do 
-              echo "Emulator Boot တက်ရန် စောင့်ဆိုင်းနေဆဲဖြစ်ပါသည် (၅ စက္ကန့် ထပ်စောင့်ပါမည်)..."
+            while [ "$(adb shell getprop sys.boot_completed | tr -d '\r')" != "1" ]; do
+              echo "Emulator Boot တက်ရန် စောင့်ဆိုင်းနေဆဲဖြစ်ပါသည် (၁၅ စက္ကန့် ထပ်စောင့်ပါမည်)..."
               sleep 15
             done
             
-            # 🚀 [အဆင့်မြှင့်တင်ချက် ၂] - Package Manager (pm) တကယ် အလုပ်လုပ်မလုပ် ထပ်မံစစ်ဆေးခြင်း
+            # 🚀 [အဆင့်မြှင့်တင်ချက် ၂] - Package Manager (pm) တကယ် အလုပ်လုပ်မလုပ် ထပ်မံစစ်ဆေးခြင်း (Syntax Fix ပြုလုပ်ပြီး)
             echo "Package Manager Service အဆင်သင့်ဖြစ်မဖြစ် စစ်ဆေးနေပါသည်..."
             while ! adb shell pm path android >/dev/null 2>&1; do
               echo "Package Manager အဆင်သင့်မဖြစ်သေးပါ။ စက္ကန့်အနည်းငယ် ထပ်မံစောင့်ဆိုင်းပါမည်..."
@@ -78,10 +78,6 @@ jobs:
             export SDL_VIDEODRIVER=dummy
             
             # 🚀 [အဆင့်မြှင့်တင်ချက် ၄] - Broken Pipe မဖြစ်စေရန်နှင့် Stream လုံးဝတည်ငြိမ်စေရန် ပြင်ဆင်ထားသော ပိုက်လိုင်း
-            # ၁။ --record-format ကို ဖျောက်ပြီး raw H.264 video stream ကိုပဲ ပို့ပေးသည်။
-            # ၂။ ffmpeg packet buffer ကို 1024 အထိ မြှင့်တင်ပြီး GitHub Actions Runner ရဲ့ CPU ကြောင့် လိုင်းမပြတ်အောင် ကာကွယ်သည်။
-            # ၃။ real-time flag (-re) ကို ဖယ်ရှားပြီး အလိုအလျောက် scale ညှိပေးမည့် video filter ကို သုံးထားသည်။
-            
             scrcpy --no-audio --no-window --max-size=1280 --video-bit-rate=2M --video-codec=h264 --push-target=none --record=- | \
             ffmpeg -thread_queue_size 1024 -i - \
             -f lavfi -thread_queue_size 1024 -i anullsrc=channel_layout=stereo:sample_rate=44100 \
