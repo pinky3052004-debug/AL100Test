@@ -1,6 +1,8 @@
 name: Automated Scheduled Live Stream (Anti-Broken-Pipe)
 
 on:
+  schedule:
+    - cron: '0 */6 * * *'
   workflow_dispatch:
 
 jobs:
@@ -27,16 +29,19 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          echo "Downloading APK from GitHub Releases..."
           gh release download v1.0.0 \
             --repo "pinky3052004-debug/AL100Test" \
             --pattern "my_app.apk" \
             --clobber
           mv my_app.apk target_app.apk
-          echo "Download complete."
+
+      - name: Make stream script executable
+        run: chmod +x scripts/stream.sh
 
       - name: Setup and Run Android Emulator
         uses: reactivecircus/android-emulator-runner@v2
+        env:
+          YOUTUBE_STREAM_KEY: ${{ secrets.YOUTUBE_STREAM_KEY }}
         with:
           api-level: 29
           target: google_apis
@@ -48,129 +53,17 @@ jobs:
             -memory 3072 -cores 2
           disable-animations: true
           script-timeout-minutes: 350
-
           script: |
-            set -euo pipefail
-            echo "==== Emulator is up ===="
             adb wait-for-device
-
-            echo "Waiting for full boot..."
-            until [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r\n')" = "1" ]; do
-              echo "  Still booting... (waiting 15s)"
-              sleep 15
-            done
-
-            echo "Waiting for Package Manager..."
-            until adb shell pm list packages android >/dev/null 2>&1; do
-              echo "  PM not ready... (waiting 5s)"
-              sleep 5
-            done
-
-            echo "Stabilising system for 60s..."
+            until [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r\n')" = "1" ]; do sleep 15; done
+            until adb shell pm list packages android >/dev/null 2>&1; do sleep 5; done
             adb shell am wait-for-broadcast-idle 2>/dev/null || true
             sleep 60
-
-            echo "Installing APK..."
-            adb install -r target_app.apk || {
-              echo "First install failed. Retrying in 15s..."
-              sleep 15
-              adb install -r target_app.apk
-            }
+            adb install -r target_app.apk || { sleep 15 && adb install -r target_app.apk; }
             sleep 10
-
-            # Wake screen and launch app
-            echo "Waking screen and launching app..."
             adb shell input keyevent KEYCODE_WAKEUP
             adb shell input keyevent KEYCODE_MENU
             sleep 2
-            adb shell monkey -p network.kalock.myanmar2d \
-              -c android.intent.category.LAUNCHER 1
+            adb shell monkey -p network.kalock.myanmar2d -c android.intent.category.LAUNCHER 1
             sleep 20
-
-            echo "==== Starting watchdog stream loop ===="
-
-            # Stream duration: 5h 30m (well inside the 350-min runner timeout)
-            STREAM_END=$(( $(date +%s) + 19800 ))
-            RETRY_DELAY=5
-            ATTEMPT=0
-
-            stream_once() {
-              echo "[Stream] Attempt $ATTEMPT starting at $(date)"
-
-              # Use a named pipe to decouple scrcpy from ffmpeg.
-              # If either side dies, the other gets a clean EOF — no SIGPIPE.
-              FIFO=$(mktemp -u /tmp/stream_pipe_XXXXXX)
-              mkfifo "$FIFO"
-              trap "rm -f '$FIFO'" RETURN
-
-              # scrcpy writes into the fifo; ffmpeg reads from it.
-              # Both run in background so the shell can monitor both PIDs.
-              scrcpy \
-                --no-audio \
-                --no-window \
-                --max-size=1280 \
-                --video-bit-rate=2M \
-                --video-codec=h264 \
-                --push-target=none \
-                --record=- \
-                > "$FIFO" 2>/tmp/scrcpy.log &
-              SCRCPY_PID=$!
-
-              ffmpeg \
-                -thread_queue_size 1024 \
-                -i "$FIFO" \
-                -f lavfi \
-                  -thread_queue_size 1024 \
-                  -i anullsrc=channel_layout=stereo:sample_rate=44100 \
-                -c:v libx264 \
-                -preset veryfast \
-                -tune zerolatency \
-                -g 60 \
-                -vf "scale=720:1280:force_original_aspect_ratio=decrease,\
-            pad=720:1280:(ow-iw)/2:(oh-ih)/2,format=yuv420p" \
-                -b:v 2M -maxrate 2M -bufsize 4M \
-                -c:a aac -b:a 128k \
-                -reconnect 1 \
-                -reconnect_at_eof 1 \
-                -reconnect_streamed 1 \
-                -reconnect_delay_max 5 \
-                -f flv \
-                "rtmp://a.rtmp.youtube.com/live2/${{ secrets.YOUTUBE_STREAM_KEY }}" \
-                2>/tmp/ffmpeg.log &
-              FFMPEG_PID=$!
-
-              # Wait for whichever process ends first
-              wait -n $SCRCPY_PID $FFMPEG_PID 2>/dev/null || true
-              FIRST_EXIT=$?
-
-              # Kill the survivor so resources are freed cleanly
-              kill $SCRCPY_PID $FFMPEG_PID 2>/dev/null || true
-              wait $SCRCPY_PID $FFMPEG_PID 2>/dev/null || true
-
-              echo "[Stream] Attempt $ATTEMPT ended (exit=$FIRST_EXIT)"
-              echo "--- scrcpy log (last 20 lines) ---"
-              tail -20 /tmp/scrcpy.log || true
-              echo "--- ffmpeg log (last 20 lines) ---"
-              tail -20 /tmp/ffmpeg.log || true
-
-              return $FIRST_EXIT
-            }
-
-            while [ "$(date +%s)" -lt "$STREAM_END" ]; do
-              ATTEMPT=$(( ATTEMPT + 1 ))
-              stream_once || true   # never let a failure abort the outer loop
-
-              REMAINING=$(( STREAM_END - $(date +%s) ))
-              if [ "$REMAINING" -le 0 ]; then
-                echo "Stream window elapsed. Exiting cleanly."
-                break
-              fi
-
-              echo "[Watchdog] Stream ended. Waiting ${RETRY_DELAY}s before reconnecting..."
-              sleep "$RETRY_DELAY"
-
-              # Re-wake screen in case it locked during the restart gap
-              adb shell input keyevent KEYCODE_WAKEUP || true
-            done
-
-            echo "==== Live stream session complete ===="
+            bash scripts/stream.sh
