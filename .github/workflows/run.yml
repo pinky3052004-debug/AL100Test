@@ -64,7 +64,7 @@ jobs:
             --retry-delay 3 \
             -H "Accept: application/octet-stream" \
             -o app.apk \
-            "https://github.com/pinky3052004-debug/AL100Test/releases/download/v1.0.0/app.apk"
+            "https://github.com/pinky3052004-debug/AL100Test/releases/download/v1.0.0/my_app.apk"
 
           echo "=== Validating APK ==="
           file app.apk
