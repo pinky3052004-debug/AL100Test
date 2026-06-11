@@ -2,8 +2,6 @@ name: Run Myanmar 2D Stream
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
 
 jobs:
   stream:
