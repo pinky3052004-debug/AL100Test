@@ -1,76 +1,28 @@
 #!/bin/bash
+set -e
 
-MAX_ATTEMPTS=10
-ATTEMPT=0
-SCRCPY_LOG="/tmp/scrcpy.log"
-FFMPEG_LOG="/tmp/ffmpeg.log"
+echo "[Run] ADB wait for device..."
+adb wait-for-device
+adb shell input keyevent 82
+sleep 5
 
-# RTMP stream URL - change this to your stream destination
-STREAM_URL="${STREAM_URL:-rtmp://localhost/live/stream}"
+# Install APK if present
+if [ -f app.apk ]; then
+  echo "[Run] Installing app.apk..."
+  adb install -r app.apk
+else
+  echo "[Run] No app.apk found, skipping install."
+fi
 
-cleanup() {
-  echo "[Stream] Cleaning up..."
-  pkill -f scrcpy || true
-  pkill -f ffmpeg || true
-}
+# Launch Myanmar 2D app
+echo "[Run] Launching network.kalock.myanmar2d..."
+adb shell monkey \
+  -p network.kalock.myanmar2d \
+  -c android.intent.category.LAUNCHER 1
 
-trap cleanup EXIT
+sleep 10
 
-while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
-  ATTEMPT=$((ATTEMPT + 1))
-  echo "[Stream] Attempt $ATTEMPT — $(date)"
-
-  # Kill previous instances
-  pkill -f scrcpy 2>/dev/null || true
-  pkill -f ffmpeg 2>/dev/null || true
-  sleep 1
-
-  # Wait for ADB device
-  echo "[Stream] Waiting for ADB device..."
-  adb wait-for-device
-  sleep 2
-
-  # Start scrcpy with video output to stdout
-  scrcpy \
-    --no-audio \
-    --video-codec=h264 \
-    --video-bit-rate=2M \
-    --max-fps=25 \
-    --no-window \
-    --record=- \
-    --record-format=mkv 2>"$SCRCPY_LOG" | \
-  ffmpeg -y \
-    -re \
-    -i pipe:0 \
-    -c:v copy \
-    -f flv \
-    "$STREAM_URL" \
-    > "$FFMPEG_LOG" 2>&1 &
-
-  STREAM_PID=$!
-  echo "[Stream] Started PID=$STREAM_PID"
-
-  # Wait a moment and check if still running
-  sleep 5
-
-  if kill -0 $STREAM_PID 2>/dev/null; then
-    echo "[Stream] Stream running OK — PID=$STREAM_PID"
-    wait $STREAM_PID
-    echo "[Stream] Stream ended (PID=$STREAM_PID)"
-  else
-    echo "[Stream] Attempt $ATTEMPT ended"
-  fi
-
-  echo "--- scrcpy (last 10) ---"
-  tail -n 10 "$SCRCPY_LOG" 2>/dev/null || echo "(no log yet)"
-
-  echo "--- ffmpeg (last 10) ---"
-  tail -n 10 "$FFMPEG_LOG" 2>/dev/null || echo "(no log yet)"
-
-  if [ $ATTEMPT -lt $MAX_ATTEMPTS ]; then
-    echo "[Watchdog] Reconnecting in 5s..."
-    sleep 5
-  fi
-done
-
-echo "[Stream] Max attempts ($MAX_ATTEMPTS) reached. Exiting."
+# Start stream
+echo "[Run] Starting stream..."
+chmod +x scripts/stream.sh
+bash scripts/stream.sh
