@@ -49,16 +49,16 @@ while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
   if kill -0 $STREAM_PID 2>/dev/null; then
     echo "[Stream] Stream running OK — PID=$STREAM_PID"
     wait $STREAM_PID
-    echo "[Stream] Stream ended (PID=$STREAM_PID)"
+    echo "[Stream] Stream ended"
   else
     echo "[Stream] Attempt $ATTEMPT ended"
   fi
 
   echo "--- scrcpy (last 10) ---"
-  tail -n 10 "$SCRCPY_LOG" 2>/dev/null || echo "(no log yet)"
+  tail -n 10 "$SCRCPY_LOG" 2>/dev/null || echo "(no log)"
 
   echo "--- ffmpeg (last 10) ---"
-  tail -n 10 "$FFMPEG_LOG" 2>/dev/null || echo "(no log yet)"
+  tail -n 10 "$FFMPEG_LOG" 2>/dev/null || echo "(no log)"
 
   if [ $ATTEMPT -lt $MAX_ATTEMPTS ]; then
     echo "[Watchdog] Reconnecting in 5s..."
