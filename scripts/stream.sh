@@ -1,70 +1,76 @@
-#!/usr/bin/env bash
-set -euo pipefail
+#!/bin/bash
 
-STREAM_END=$(( $(date +%s) + 19800 ))   # 5h 30m
-RETRY_DELAY=5
+MAX_ATTEMPTS=10
 ATTEMPT=0
+SCRCPY_LOG="/tmp/scrcpy.log"
+FFMPEG_LOG="/tmp/ffmpeg.log"
 
-stream_once() {
-  echo "[Stream] Attempt $ATTEMPT — $(date)"
+# RTMP stream URL - change this to your stream destination
+STREAM_URL="${STREAM_URL:-rtmp://localhost/live/stream}"
 
-  FIFO=$(mktemp -u /tmp/stream_pipe_XXXXXX)
-  mkfifo "$FIFO"
-  trap "rm -f '$FIFO'" RETURN
-
-  scrcpy \
-    --no-audio \
-    --no-window \
-    --max-size=1280 \
-    --video-bit-rate=2M \
-    --video-codec=h264 \
-    --push-target=none \
-    --record=- \
-    > "$FIFO" 2>/tmp/scrcpy.log &
-  SCRCPY_PID=$!
-
-  ffmpeg \
-    -thread_queue_size 1024 \
-    -i "$FIFO" \
-    -f lavfi \
-      -thread_queue_size 1024 \
-      -i anullsrc=channel_layout=stereo:sample_rate=44100 \
-    -c:v libx264 \
-    -preset veryfast \
-    -tune zerolatency \
-    -g 60 \
-    -vf "scale=720:1280:force_original_aspect_ratio=decrease,pad=720:1280:(ow-iw)/2:(oh-ih)/2,format=yuv420p" \
-    -b:v 2M -maxrate 2M -bufsize 4M \
-    -c:a aac -b:a 128k \
-    -reconnect 1 \
-    -reconnect_at_eof 1 \
-    -reconnect_streamed 1 \
-    -reconnect_delay_max 5 \
-    -f flv \
-    "rtmp://a.rtmp.youtube.com/live2/${YOUTUBE_STREAM_KEY}" \
-    2>/tmp/ffmpeg.log &
-  FFMPEG_PID=$!
-
-  wait -n $SCRCPY_PID $FFMPEG_PID 2>/dev/null || true
-
-  kill $SCRCPY_PID $FFMPEG_PID 2>/dev/null || true
-  wait $SCRCPY_PID $FFMPEG_PID 2>/dev/null || true
-
-  echo "[Stream] Attempt $ATTEMPT ended"
-  echo "--- scrcpy (last 10) ---"; tail -10 /tmp/scrcpy.log || true
-  echo "--- ffmpeg (last 10) ---"; tail -10 /tmp/ffmpeg.log || true
+cleanup() {
+  echo "[Stream] Cleaning up..."
+  pkill -f scrcpy || true
+  pkill -f ffmpeg || true
 }
 
-while [ "$(date +%s)" -lt "$STREAM_END" ]; do
-  ATTEMPT=$(( ATTEMPT + 1 ))
-  stream_once || true
+trap cleanup EXIT
 
-  REMAINING=$(( STREAM_END - $(date +%s) ))
-  [ "$REMAINING" -le 0 ] && { echo "Window elapsed."; break; }
+while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
+  ATTEMPT=$((ATTEMPT + 1))
+  echo "[Stream] Attempt $ATTEMPT — $(date)"
 
-  echo "[Watchdog] Reconnecting in ${RETRY_DELAY}s..."
-  sleep "$RETRY_DELAY"
-  adb shell input keyevent KEYCODE_WAKEUP || true
+  # Kill previous instances
+  pkill -f scrcpy 2>/dev/null || true
+  pkill -f ffmpeg 2>/dev/null || true
+  sleep 1
+
+  # Wait for ADB device
+  echo "[Stream] Waiting for ADB device..."
+  adb wait-for-device
+  sleep 2
+
+  # Start scrcpy with video output to stdout
+  scrcpy \
+    --no-audio \
+    --video-codec=h264 \
+    --video-bit-rate=2M \
+    --max-fps=25 \
+    --no-window \
+    --record=- \
+    --record-format=mkv 2>"$SCRCPY_LOG" | \
+  ffmpeg -y \
+    -re \
+    -i pipe:0 \
+    -c:v copy \
+    -f flv \
+    "$STREAM_URL" \
+    > "$FFMPEG_LOG" 2>&1 &
+
+  STREAM_PID=$!
+  echo "[Stream] Started PID=$STREAM_PID"
+
+  # Wait a moment and check if still running
+  sleep 5
+
+  if kill -0 $STREAM_PID 2>/dev/null; then
+    echo "[Stream] Stream running OK — PID=$STREAM_PID"
+    wait $STREAM_PID
+    echo "[Stream] Stream ended (PID=$STREAM_PID)"
+  else
+    echo "[Stream] Attempt $ATTEMPT ended"
+  fi
+
+  echo "--- scrcpy (last 10) ---"
+  tail -n 10 "$SCRCPY_LOG" 2>/dev/null || echo "(no log yet)"
+
+  echo "--- ffmpeg (last 10) ---"
+  tail -n 10 "$FFMPEG_LOG" 2>/dev/null || echo "(no log yet)"
+
+  if [ $ATTEMPT -lt $MAX_ATTEMPTS ]; then
+    echo "[Watchdog] Reconnecting in 5s..."
+    sleep 5
+  fi
 done
 
-echo "==== Stream session complete ===="
+echo "[Stream] Max attempts ($MAX_ATTEMPTS) reached. Exiting."
