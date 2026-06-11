@@ -2,6 +2,8 @@ name: Run Myanmar 2D Stream
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
 
 jobs:
   stream:
@@ -14,22 +16,73 @@ jobs:
 
       - name: Install dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y ffmpeg wget curl
+          sudo apt-get update -y
+          sudo apt-get install -y \
+            ffmpeg \
+            curl \
+            wget \
+            file \
+            xxd \
+            python3
 
       - name: Install scrcpy
         run: |
-          sudo apt-get install -y snapd
-          sudo snap install scrcpy
+          sudo apt-get install -y scrcpy || true
+          # fallback: build from snap if apt fails
+          which scrcpy || sudo snap install scrcpy || true
 
-      - name: Download APK from release
+      - name: Enable KVM
         run: |
-          curl -L \
-            "https://github.com/pinky3052004-debug/AL100Test/releases/download/v1.0.0/app.apk" \
-            -o app.apk
-          echo "[APK] Downloaded: $(du -sh app.apk)"
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          sudo adduser $USER kvm || true
 
-      - name: Start Emulator, Launch App and Stream
+      - name: Check release assets
+        run: |
+          echo "=== Checking release assets ==="
+          curl -s \
+            "https://api.github.com/repos/pinky3052004-debug/AL100Test/releases/tags/v1.0.0" \
+            | python3 -c "
+          import sys, json
+          data = json.load(sys.stdin)
+          print('Release name:', data.get('name'))
+          print('Draft:', data.get('draft'))
+          print('Prerelease:', data.get('prerelease'))
+          assets = data.get('assets', [])
+          if not assets:
+              print('WARNING: No assets found in this release!')
+          for a in assets:
+              print(f'  Asset: {a[\"name\"]} | size: {a[\"size\"]} bytes | url: {a[\"browser_download_url\"]}')
+          "
+
+      - name: Download APK
+        run: |
+          echo "=== Downloading APK ==="
+          curl -L \
+            --fail \
+            --retry 3 \
+            --retry-delay 3 \
+            -H "Accept: application/octet-stream" \
+            -o app.apk \
+            "https://github.com/pinky3052004-debug/AL100Test/releases/download/v1.0.0/app.apk"
+
+          echo "=== Validating APK ==="
+          file app.apk
+          du -sh app.apk
+          echo "First bytes (should start with PK for valid APK):"
+          xxd app.apk | head -3
+
+          # Abort early if not a valid zip/apk
+          if ! file app.apk | grep -qiE "zip|apk|java"; then
+            echo "ERROR: Not a valid APK file. Content:"
+            cat app.apk
+            exit 1
+          fi
+          echo "APK looks valid."
+
+      - name: Run emulator and stream
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 29
