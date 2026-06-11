@@ -27,7 +27,6 @@ while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
   sleep 2
 
   scrcpy \
-    --no-sound \
     --video-codec=h264 \
     --video-bit-rate=2M \
     --max-fps=25 \
