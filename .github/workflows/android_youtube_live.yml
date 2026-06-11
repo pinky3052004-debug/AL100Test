@@ -6,6 +6,7 @@ on:
 jobs:
   live_stream:
     runs-on: macos-15-intel
+    timeout-minutes: 360
 
     steps:
       - name: Checkout Repository Code
@@ -26,52 +27,150 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          echo "GitHub Release ထဲမှ my_app.apk အား ဒေါင်းလုဒ်ဆွဲနေသည်..."
-          gh release download v1.0.0 --repo "pinky3052004-debug/AL100Test" --pattern "my_app.apk" --clobber
+          echo "Downloading APK from GitHub Releases..."
+          gh release download v1.0.0 \
+            --repo "pinky3052004-debug/AL100Test" \
+            --pattern "my_app.apk" \
+            --clobber
           mv my_app.apk target_app.apk
-          echo "ဒေါင်းလုဒ် အောင်မြင်ပါပြီ။"
+          echo "Download complete."
 
       - name: Setup and Run Android Emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 29          
-          target: google_apis    
-          arch: x86_64           
+          api-level: 29
+          target: google_apis
+          arch: x86_64
           force-avd-creation: false
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none -memory 3072 -cores 2
+          emulator-options: >-
+            -no-window -gpu swiftshader_indirect -noaudio
+            -no-boot-anim -camera-back none -camera-front none
+            -memory 3072 -cores 2
           disable-animations: true
-          script-timeout-minutes: 120
-          
-          script: |
-            echo "==== Emulator စတင်တက်လာပါပြီ ===="
-            adb wait-for-device
-            
-            echo "Emulator Core Services များ အပြီးသတ်ပွင့်လာသည်အထိ စောင့်ဆိုင်းနေပါသည်..."
-            while [ "$(adb shell getprop sys.boot_completed | tr -d '\r\n')" != "1" ]; do echo "Emulator Boot တက်ရန် စောင့်ဆိုင်းနေဆဲဖြစ်ပါသည် (၁၅ စက္ကန့် ထပ်စောင့်ပါမည်)..."; sleep 15; done
-            
-            echo "Package Manager Service အဆင်သင့်ဖြစ်မဖြစ် စစ်ဆေးနေပါသည်..."
-            while ! adb shell pm list packages android >/dev/null 2>&1; do echo "Package Manager အဆင်သင့်မဖြစ်သေးပါ။ ၅ စက္ကန့် ထပ်မံစောင့်ဆိုင်းပါမည်..."; sleep 5; done
-            
-            echo "စနစ်တစ်ခုလုံး လုံးဝ အနည်ထိုင်သွားစေရန် ၆၀ စက္ကန့် (၁ မိနစ်) စောင့်ဆိုင်းပါမည်..."
-            adb shell am wait-for-broadcast-idle || true
-            sleep 60
-            
-            echo "App အား Emulator အတွင်းသို့ စတင်ထည့်သွင်းနေပါသည်..."
-            adb install -r target_app.apk || (echo "ပထမအကြိမ် ထည့်သွင်းမှု အဆင်မပြေပါ။ ၁၅ စက္ကန့် စောင့်ပြီး ဒုတိယအကြိမ် ထပ်မံကြိုးစားပါမည်..."; sleep 15; adb install -r target_app.apk)
-            sleep 15
-            
-            echo "App အား စတင်ဖွင့်လှစ်နေပါသည်: network.kalock.myanmar2d"
-            adb shell monkey -p network.kalock.myanmar2d -c android.intent.category.LAUNCHER 1
-            sleep 15
+          script-timeout-minutes: 350
 
-            echo "==== YouTube သို့ မပြတ်တောက်သော Live Stream စတင်လွှင့်နေပါပြီ ===="
-            export SDL_VIDEODRIVER=dummy
-            
-            scrcpy --no-audio --no-window --max-size=1280 --video-bit-rate=2M --video-codec=h264 --push-target=none --record=- | \
-            ffmpeg -thread_queue_size 1024 -i - \
-            -f lavfi -thread_queue_size 1024 -i anullsrc=channel_layout=stereo:sample_rate=44100 \
-            -c:v libx264 -preset veryfast -tune zerolatency -g 60 \
-            -vf "scale=720:1280:force_original_aspect_ratio=decrease,pad=720:1280:(ow-iw)/2:(oh-ih)/2,format=yuv420p" \
-            -b:v 2M -maxrate 2M -bufsize 4M \
-            -c:a aac -b:a 128k \
-            -f flv "rtmp://a.rtmp.youtube.com/live2/${{ secrets.YOUTUBE_STREAM_KEY }}"
+          script: |
+            set -euo pipefail
+            echo "==== Emulator is up ===="
+            adb wait-for-device
+
+            echo "Waiting for full boot..."
+            until [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r\n')" = "1" ]; do
+              echo "  Still booting... (waiting 15s)"
+              sleep 15
+            done
+
+            echo "Waiting for Package Manager..."
+            until adb shell pm list packages android >/dev/null 2>&1; do
+              echo "  PM not ready... (waiting 5s)"
+              sleep 5
+            done
+
+            echo "Stabilising system for 60s..."
+            adb shell am wait-for-broadcast-idle 2>/dev/null || true
+            sleep 60
+
+            echo "Installing APK..."
+            adb install -r target_app.apk || {
+              echo "First install failed. Retrying in 15s..."
+              sleep 15
+              adb install -r target_app.apk
+            }
+            sleep 10
+
+            # Wake screen and launch app
+            echo "Waking screen and launching app..."
+            adb shell input keyevent KEYCODE_WAKEUP
+            adb shell input keyevent KEYCODE_MENU
+            sleep 2
+            adb shell monkey -p network.kalock.myanmar2d \
+              -c android.intent.category.LAUNCHER 1
+            sleep 20
+
+            echo "==== Starting watchdog stream loop ===="
+
+            # Stream duration: 5h 30m (well inside the 350-min runner timeout)
+            STREAM_END=$(( $(date +%s) + 19800 ))
+            RETRY_DELAY=5
+            ATTEMPT=0
+
+            stream_once() {
+              echo "[Stream] Attempt $ATTEMPT starting at $(date)"
+
+              # Use a named pipe to decouple scrcpy from ffmpeg.
+              # If either side dies, the other gets a clean EOF — no SIGPIPE.
+              FIFO=$(mktemp -u /tmp/stream_pipe_XXXXXX)
+              mkfifo "$FIFO"
+              trap "rm -f '$FIFO'" RETURN
+
+              # scrcpy writes into the fifo; ffmpeg reads from it.
+              # Both run in background so the shell can monitor both PIDs.
+              scrcpy \
+                --no-audio \
+                --no-window \
+                --max-size=1280 \
+                --video-bit-rate=2M \
+                --video-codec=h264 \
+                --push-target=none \
+                --record=- \
+                > "$FIFO" 2>/tmp/scrcpy.log &
+              SCRCPY_PID=$!
+
+              ffmpeg \
+                -thread_queue_size 1024 \
+                -i "$FIFO" \
+                -f lavfi \
+                  -thread_queue_size 1024 \
+                  -i anullsrc=channel_layout=stereo:sample_rate=44100 \
+                -c:v libx264 \
+                -preset veryfast \
+                -tune zerolatency \
+                -g 60 \
+                -vf "scale=720:1280:force_original_aspect_ratio=decrease,\
+            pad=720:1280:(ow-iw)/2:(oh-ih)/2,format=yuv420p" \
+                -b:v 2M -maxrate 2M -bufsize 4M \
+                -c:a aac -b:a 128k \
+                -reconnect 1 \
+                -reconnect_at_eof 1 \
+                -reconnect_streamed 1 \
+                -reconnect_delay_max 5 \
+                -f flv \
+                "rtmp://a.rtmp.youtube.com/live2/${{ secrets.YOUTUBE_STREAM_KEY }}" \
+                2>/tmp/ffmpeg.log &
+              FFMPEG_PID=$!
+
+              # Wait for whichever process ends first
+              wait -n $SCRCPY_PID $FFMPEG_PID 2>/dev/null || true
+              FIRST_EXIT=$?
+
+              # Kill the survivor so resources are freed cleanly
+              kill $SCRCPY_PID $FFMPEG_PID 2>/dev/null || true
+              wait $SCRCPY_PID $FFMPEG_PID 2>/dev/null || true
+
+              echo "[Stream] Attempt $ATTEMPT ended (exit=$FIRST_EXIT)"
+              echo "--- scrcpy log (last 20 lines) ---"
+              tail -20 /tmp/scrcpy.log || true
+              echo "--- ffmpeg log (last 20 lines) ---"
+              tail -20 /tmp/ffmpeg.log || true
+
+              return $FIRST_EXIT
+            }
+
+            while [ "$(date +%s)" -lt "$STREAM_END" ]; do
+              ATTEMPT=$(( ATTEMPT + 1 ))
+              stream_once || true   # never let a failure abort the outer loop
+
+              REMAINING=$(( STREAM_END - $(date +%s) ))
+              if [ "$REMAINING" -le 0 ]; then
+                echo "Stream window elapsed. Exiting cleanly."
+                break
+              fi
+
+              echo "[Watchdog] Stream ended. Waiting ${RETRY_DELAY}s before reconnecting..."
+              sleep "$RETRY_DELAY"
+
+              # Re-wake screen in case it locked during the restart gap
+              adb shell input keyevent KEYCODE_WAKEUP || true
+            done
+
+            echo "==== Live stream session complete ===="
