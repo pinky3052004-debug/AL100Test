@@ -17,23 +17,14 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
-            adb \
-            ffmpeg \
-            scrcpy \
-            android-tools-adb \
-            wget \
-            curl
+          sudo apt-get install -y ffmpeg wget curl
 
-      - name: Enable KVM (for emulator)
+      - name: Install scrcpy
         run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
-            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-          sudo adduser $USER kvm || true
+          sudo apt-get install -y snapd
+          sudo snap install scrcpy
 
-      - name: Setup Android SDK & AVD
+      - name: Start Emulator, Launch App and Stream
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 29
@@ -43,39 +34,6 @@ jobs:
           avd-name: test_avd
           emulator-options: -no-snapshot -no-window -no-audio -gpu swiftshader_indirect
           disable-animations: true
-          script: |
-            echo "Emulator started"
-            adb devices
-
-      - name: Start Emulator and Launch App
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 29
-          target: google_apis
-          arch: x86_64
-          avd-name: test_avd
-          emulator-options: -no-snapshot -no-window -no-audio -gpu swiftshader_indirect
-          disable-animations: true
-          script: |
-            # Wait for boot
-            adb wait-for-device
-            adb shell input keyevent 82
-            sleep 5
-
-            # Install APK if present
-            if [ -f app.apk ]; then
-              adb install -r app.apk
-            fi
-
-            # Launch Myanmar 2D app
-            adb shell monkey \
-              -p network.kalock.myanmar2d \
-              -c android.intent.category.LAUNCHER 1
-
-            sleep 10
-
-            # Start stream
-            chmod +x scripts/stream.sh
-            bash scripts/stream.sh
+          script: bash scripts/run.sh
         env:
           STREAM_URL: ${{ secrets.STREAM_URL }}
