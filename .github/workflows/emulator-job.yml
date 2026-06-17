@@ -37,7 +37,65 @@ jobs:
           sleep 3
           echo "DISPLAY=:99" >> $GITHUB_ENV
 
-      - name: Run Emulator, Install APK and Stream to YouTube
+      # ── Script file အဖြစ် ရေးထားပါ ──
+      - name: Create Stream Script
+        run: |
+          cat > /tmp/stream.sh << 'SCRIPT'
+          #!/bin/bash
+          export DISPLAY=:99
+          echo "=== Emulator Ready! ==="
+
+          adb root || true
+          sleep 2
+          adb shell settings put global private_dns_mode hostname || true
+          adb shell settings put global private_dns_specifier dns.adguard.com || true
+          echo "Ads blocked!"
+
+          adb install -r /home/runner/work/_temp/app.apk || adb install -r app.apk
+          echo "APK Installed!"
+
+          adb shell input keyevent 82
+          sleep 2
+
+          echo "=== Launching App ==="
+          adb shell am start -n "network.kalock.myanmar2d/.MainActivity"
+          sleep 10
+          echo "App Launched!"
+
+          echo "=== Starting YouTube Stream ==="
+          while true; do
+            echo "Stream starting..."
+            adb shell screenrecord --output-format=h264 --time-limit=180 - 2>/dev/null | \
+            ffmpeg \
+              -re \
+              -f h264 \
+              -i pipe:0 \
+              -f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 \
+              -c:v libx264 \
+              -preset veryfast \
+              -tune zerolatency \
+              -pix_fmt yuv420p \
+              -r 30 \
+              -g 60 \
+              -b:v 2500k \
+              -maxrate 2500k \
+              -bufsize 5000k \
+              -c:a aac \
+              -ar 44100 \
+              -b:a 128k \
+              -f flv \
+              "rtmp://a.rtmp.youtube.com/live2/$YOUTUBE_STREAM_KEY" || true
+            echo "Restarting stream in 2s..."
+            sleep 2
+          done
+          SCRIPT
+          chmod +x /tmp/stream.sh
+
+      # ── APK ကို accessible path သို့ copy ──
+      - name: Copy APK
+        run: cp app.apk /tmp/app.apk
+
+      - name: Run Emulator and Stream
         uses: reactivecircus/android-emulator-runner@v2
         env:
           DISPLAY: ':99'
@@ -54,54 +112,7 @@ jobs:
           force-avd-creation: true
           disable-animations: true
           emulator-options: -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect -memory 4096
-          script: |
-            export DISPLAY=:99
-            echo "=== Emulator Ready! ==="
-
-            adb root || true
-            sleep 2
-            adb shell settings put global private_dns_mode hostname || true
-            adb shell settings put global private_dns_specifier dns.adguard.com || true
-            echo "Ads blocked!"
-
-            adb install -r app.apk
-            echo "APK Installed!"
-
-            adb shell input keyevent 82
-            sleep 2
-
-            echo "=== Launching App ==="
-            adb shell am start -n "network.kalock.myanmar2d/.MainActivity"
-            sleep 10
-            echo "App Launched!"
-
-            echo "=== Starting YouTube Stream ==="
-
-            # screenrecord loop - broken pipe ဖြစ်ရင် ပြန်စသည်
-            while true; do
-              adb shell screenrecord --output-format=h264 --time-limit=180 - 2>/dev/null | \
-              ffmpeg \
-                -re \
-                -f h264 \
-                -i pipe:0 \
-                -f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 \
-                -c:v libx264 \
-                -preset veryfast \
-                -tune zerolatency \
-                -pix_fmt yuv420p \
-                -r 30 \
-                -g 60 \
-                -b:v 2500k \
-                -maxrate 2500k \
-                -bufsize 5000k \
-                -c:a aac \
-                -ar 44100 \
-                -b:a 128k \
-                -f flv \
-                "rtmp://a.rtmp.youtube.com/live2/$YOUTUBE_STREAM_KEY" || true
-              echo "Stream ended, restarting in 2s..."
-              sleep 2
-            done
+          script: bash /tmp/stream.sh
 
       - name: Show Logs on Failure
         if: failure()
