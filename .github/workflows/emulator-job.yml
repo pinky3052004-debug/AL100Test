@@ -9,28 +9,22 @@ jobs:
     timeout-minutes: 350
 
     steps:
-      # ===================================================
-      # KVM ကို enable လုပ်တာ (emulator အမြန်ဆုံး run ဖို့)
-      # ===================================================
+      # KVM enable
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      # ===================================================
-      # Java 17 install
-      # ===================================================
+      # Java 17
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
 
-      # ===================================================
-      # လိုအပ်တဲ့ package တွေ install လုပ်တာ
-      # scrcpy ပါ ထည့်ထားတယ် - screen mirror အတွက်
-      # ===================================================
+      # Dependencies install
+      # feh မလိုတော့ဘူး - ffmpeg တစ်ခုတည်းနဲ့ လုပ်မယ်
       - name: Install Dependencies
         run: |
           sudo apt-get update -qq
@@ -39,23 +33,17 @@ jobs:
             xvfb \
             x11-utils \
             xdotool \
-            feh \
-            wmctrl \
-            scrcpy \
-            adb
+            x11vnc \
+            imagemagick
           echo "✅ Dependencies installed!"
 
-      # ===================================================
-      # APK ကို download လုပ်တာ
-      # ===================================================
+      # APK Download
       - name: Download APK
         run: |
           wget -q -O /tmp/app.apk "https://github.com/pinky3052004-debug/AL100Test/releases/download/v1.0.0/my_app.apk"
           echo "✅ APK size: $(du -sh /tmp/app.apk)"
 
-      # ===================================================
-      # Virtual Display စတင်တာ (1280x720)
-      # ===================================================
+      # Virtual Display start
       - name: Start Virtual Display
         run: |
           Xvfb :99 -screen 0 1280x720x24 -ac +extension GLX +render -noreset &
@@ -63,9 +51,7 @@ jobs:
           echo "DISPLAY=:99" >> $GITHUB_ENV
           echo "✅ Xvfb started!"
 
-      # ===================================================
       # Stream Script ဆောက်တာ
-      # ===================================================
       - name: Create Stream Script
         run: |
           cat > /tmp/stream.sh << 'SCRIPT'
@@ -73,26 +59,19 @@ jobs:
           export DISPLAY=:99
           echo "=== ✅ Emulator Ready! ==="
 
-          # Root access ယူတာ
           adb root || true
           sleep 3
 
-          # -----------------------------------------------
-          # Ad Block - AdGuard DNS သုံးတာ
-          # -----------------------------------------------
+          # Ad Block
           adb shell settings put global private_dns_mode hostname || true
           adb shell settings put global private_dns_specifier dns.adguard.com || true
-          echo "✅ Ads blocked via AdGuard DNS!"
+          echo "✅ Ads blocked!"
 
-          # -----------------------------------------------
           # APK Install
-          # -----------------------------------------------
           adb install -r /tmp/app.apk
           echo "✅ APK Installed!"
 
-          # -----------------------------------------------
-          # Screen Unlock လုပ်တာ
-          # -----------------------------------------------
+          # Screen Unlock
           adb shell input keyevent 82
           sleep 1
           adb shell input keyevent 4
@@ -101,89 +80,65 @@ jobs:
           sleep 2
           echo "✅ Screen Unlocked!"
 
-          # -----------------------------------------------
-          # App Launch လုပ်တာ
-          # -----------------------------------------------
-          echo "=== 🚀 App Launching... ==="
+          # App Launch
+          echo "=== 🚀 Launching App ==="
           adb shell am start -n "network.kalock.myanmar2d/.MainActivity"
           sleep 15
           echo "✅ App Launched!"
 
           # -----------------------------------------------
-          # *** အဓိက FIX ***
-          # Nested Virtualization Warning Dialog ကို auto-dismiss လုပ်တာ
-          # Dialog ထွက်ရင် OK button ကို tap လုပ်မယ်
+          # Dialog dismiss - Nested Virtualization Warning
           # -----------------------------------------------
-          echo "=== 🔧 Dismissing nested virtualization dialog... ==="
+          echo "=== 🔧 Dismissing dialog... ==="
           sleep 3
-
-          # Enter key နဲ့ dismiss လုပ်ကြည့်တာ
           adb shell input keyevent 66
           sleep 1
-
-          # OK button တည်နေရာကို tap လုပ်တာ (emulator screen ပေါ်မှာ)
-          # Dialog OK button က emulator screen center အနီးမှာ ရှိတယ်
           adb shell input tap 512 328
           sleep 2
-
-          # Dialog သေချာပျောက်အောင် နောက်တစ်ကြိမ် check
           adb shell input keyevent 66
           sleep 1
-
           echo "✅ Dialog dismissed!"
 
           # -----------------------------------------------
-          # Screen Mirror - scrcpy သုံးတာ (feh ထက် ကောင်းတယ်)
-          # emulator screen ကို Xvfb ပေါ်မှာ fullscreen ပြတာ
+          # ** အဓိက FIX **
+          # feh / scrcpy မသုံးတော့ဘူး
+          # adb screencap -> pipe -> ffmpeg -> Xvfb ထဲ ဆွဲသွင်းတာ
+          # race condition ပြဿနာ လုံးဝ မဖြစ်တော့ဘူး
           # -----------------------------------------------
-          echo "=== 📺 Starting Screen Mirror with scrcpy... ==="
+          echo "=== 📺 Starting screen mirror via ffmpeg pipe... ==="
 
-          scrcpy \
-            --no-audio \
-            --window-x 0 \
-            --window-y 0 \
-            --window-width 720 \
-            --window-height 1280 \
-            --window-borderless \
-            --stay-awake \
-            --turn-screen-off \
-            2>/dev/null &
-
-          SCRCPY_PID=$!
-          sleep 5
-
-          # scrcpy window ကို fullscreen လုပ်တာ
-          wmctrl -r :ACTIVE: -b add,fullscreen 2>/dev/null || true
-          sleep 3
-
-          echo "✅ Screen Mirror started! PID: $SCRCPY_PID"
-
-          # scrcpy မအောင်မြင်ရင် feh fallback သုံးတာ
-          if ! kill -0 $SCRCPY_PID 2>/dev/null; then
-            echo "⚠️ scrcpy failed, using feh fallback..."
+          # Xvfb ထဲကို background မှာ frame တွေ ဆက်တိုက် ထည့်သွင်းမယ်
+          # atomic write သုံးတာ - tmp file ရေးပြီးမှ rename လုပ်တာ
+          # ဒါဆို feh/ffmpeg က incomplete file ကို မဖတ်တော့ဘူး
+          (
             while true; do
-              adb exec-out screencap -p > /tmp/frame.png 2>/dev/null
-              if [ -s /tmp/frame.png ]; then
-                DISPLAY=:99 feh \
-                  --fullscreen \
-                  --auto-zoom \
-                  --geometry 1280x720+0+0 \
-                  /tmp/frame.png &
-                FEH_PID=$!
-                sleep 0.033
-                kill $FEH_PID 2>/dev/null
+              # atomic write: .tmp ကို ရေးပြီး rename လုပ်တာ
+              adb exec-out screencap -p > /tmp/frame.tmp 2>/dev/null
+              if [ -s /tmp/frame.tmp ]; then
+                mv -f /tmp/frame.tmp /tmp/frame.png
+
+                # convert (ImageMagick) သုံးပြီး Xvfb root window မှာ background set လုပ်တာ
+                # feh မလိုဘူး၊ race condition မဖြစ်ဘူး
+                DISPLAY=:99 convert /tmp/frame.png \
+                  -resize 1280x720! \
+                  -depth 8 \
+                  bgr:- 2>/dev/null | \
+                DISPLAY=:99 xwud -raw -geometry 1280x720+0+0 2>/dev/null &
+                XWUD_PID=$!
+                sleep 0.04
+                kill $XWUD_PID 2>/dev/null
               fi
-            done &
-            echo "✅ feh fallback mirror started!"
-          fi
-
-          sleep 5
+              sleep 0.016
+            done
+          ) &
+          MIRROR_PID=$!
+          echo "✅ Mirror started! PID: $MIRROR_PID"
+          sleep 8
 
           # -----------------------------------------------
-          # YouTube Live Stream စတင်တာ
-          # ffmpeg နဲ့ Xvfb screen ကို YouTube ကို stream တာ
+          # YouTube Live Stream
           # -----------------------------------------------
-          echo "=== 🎥 Starting YouTube Live Stream... ==="
+          echo "=== 🎥 Starting YouTube Stream ==="
           ffmpeg \
             -f x11grab \
             -framerate 30 \
@@ -206,16 +161,13 @@ jobs:
             -f flv \
             "rtmp://a.rtmp.youtube.com/live2/$YOUTUBE_STREAM_KEY"
 
-          # Stream ပြီးရင် cleanup
-          kill $SCRCPY_PID 2>/dev/null
+          kill $MIRROR_PID 2>/dev/null
           echo "✅ Stream ended!"
           SCRIPT
           chmod +x /tmp/stream.sh
           echo "✅ Stream script created!"
 
-      # ===================================================
-      # Emulator Run + Stream စတင်တာ
-      # ===================================================
+      # Emulator Run + Stream
       - name: Run Emulator and Stream
         uses: reactivecircus/android-emulator-runner@v2
         env:
@@ -232,7 +184,6 @@ jobs:
           cores: 2
           force-avd-creation: true
           disable-animations: true
-          # -no-window ထည့်ထားတယ် - emulator window သီးသန့် မပြဘဲ scrcpy ကသာ ပြမယ်
           emulator-options: >-
             -no-audio
             -no-boot-anim
@@ -242,14 +193,12 @@ jobs:
             -no-window
           script: bash /tmp/stream.sh
 
-      # ===================================================
-      # Error ဖြစ်ရင် log ကြည့်တာ
-      # ===================================================
+      # Error log
       - name: Show Logs on Failure
         if: failure()
         run: |
           echo "=== Emulator Log ==="
-          cat /tmp/emulator.log 2>/dev/null || echo "No emulator log found"
+          cat /tmp/emulator.log 2>/dev/null || echo "No emulator log"
           echo "=== ADB Devices ==="
           adb devices 2>/dev/null || echo "ADB not available"
           echo "=== Display Check ==="
