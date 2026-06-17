@@ -51,7 +51,7 @@ jobs:
           adb shell settings put global private_dns_specifier dns.adguard.com || true
           echo "Ads blocked!"
 
-          adb install -r /home/runner/work/_temp/app.apk || adb install -r app.apk
+          adb install -r /tmp/app.apk
           echo "APK Installed!"
 
           adb shell input keyevent 82
@@ -62,24 +62,37 @@ jobs:
           sleep 10
           echo "App Launched!"
 
+          # ── Emulator screen size 1280x720 set ──
+          adb shell wm size 1280x720
+          adb shell wm density 213
+          sleep 2
+
           echo "=== Starting YouTube Stream ==="
           while true; do
             echo "Stream starting..."
-            adb shell screenrecord --output-format=h264 --time-limit=180 - 2>/dev/null | \
+            adb exec-out screenrecord \
+              --output-format=h264 \
+              --size 1280x720 \
+              --bit-rate 8000000 \
+              --time-limit 180 \
+              - 2>/dev/null | \
             ffmpeg \
               -re \
+              -fflags +nobuffer \
+              -flags low_delay \
               -f h264 \
               -i pipe:0 \
               -f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 \
               -c:v libx264 \
-              -preset veryfast \
+              -preset ultrafast \
               -tune zerolatency \
               -pix_fmt yuv420p \
               -r 30 \
               -g 60 \
-              -b:v 2500k \
-              -maxrate 2500k \
-              -bufsize 5000k \
+              -b:v 6000k \
+              -minrate 6000k \
+              -maxrate 6000k \
+              -bufsize 12000k \
               -c:a aac \
               -ar 44100 \
               -b:a 128k \
