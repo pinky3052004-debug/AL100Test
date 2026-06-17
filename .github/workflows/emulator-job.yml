@@ -24,7 +24,7 @@ jobs:
       - name: Install Dependencies
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y ffmpeg bc
+          sudo apt-get install -y ffmpeg
           echo "✅ Dependencies installed!"
 
       - name: Download APK
@@ -76,75 +76,82 @@ jobs:
           echo "✅ Dialog dismissed!"
 
           # -----------------------------------------------
-          # ** V4 အဓိက FIX - Frame Rate ပြဿနာ ဖြေရှင်းချက် **
+          # ** V5 - အကောင်းဆုံး နည်းလမ်း **
           #
-          # adb screencap နှေးတာကြောင့် "Poor" signal ဖြစ်တာ
-          # ဖြေရှင်းနည်း:
-          # 1. adb screencap loop ကို background မှာ မြန်သလောက် run
-          # 2. /tmp/latest.png မှာ နောက်ဆုံး frame ကို သိမ်းထား
-          # 3. ffmpeg က /tmp/latest.png ကို 30fps နှုန်းနဲ့ ဖတ်ပြီး stream
-          #    (frame အသစ်မရောက်သေးရင် ဟောင်းတာကိုပဲ ထပ်သုံးတာ)
-          #    => YouTube မှာ smooth, Poor မဖြစ်တော့ဘူး
+          # adb exec-out screencap -p က raw PNG bytes တွေကို
+          # stdout ကနေ ထုတ်တယ်
+          #
+          # ffmpeg -f image2pipe သည် stdin ကနေ PNG stream ကို
+          # တစ်ဆက်တည်း ဖတ်နိုင်တယ်
+          #
+          # FIFO pipe သုံးပြီး:
+          #   adb screencap → FIFO → ffmpeg → YouTube
+          #
+          # ဒါပေမဲ့ adb screencap နှေးတဲ့ပြဿနာကို
+          # tee + frame duplicate နဲ့ ဖြေရှင်းမယ်:
+          #   - adb screencap loop → /tmp/frame_NNN.png ဆွဲသိမ်း
+          #   - ffmpeg က /tmp/frames/ folder ကို glob ဖတ်
+          #   - frame အသစ်မရောက်သေးရင် ffmpeg က rate ချိန်ပြီး ဟောင်းကိုထပ်ဆွဲ
           # -----------------------------------------------
 
-          echo "=== 📸 Starting background frame capture ==="
+          echo "=== 📸 Starting capture + stream pipeline ==="
 
-          # Capture loop - မြန်သလောက် screencap ဆွဲတာ
-          # atomic write - .tmp ရေးပြီး rename မှ ffmpeg ဖတ်တာ
+          # frames folder ဆောက်တာ
+          mkdir -p /tmp/frames
+          FRAME_DIR=/tmp/frames
+          FRAME_NUM=0
+
+          # ffmpeg ကို named pipe မှတဆင့် PNG stream ပို့မယ်
+          PIPE=/tmp/ffpipe
+          mkfifo $PIPE
+
+          # -----------------------------------------------
+          # adb screencap → pipe ထဲ တိုက်ရိုက် stream
+          # ffmpeg က image2pipe format နဲ့ ဖတ်မယ်
+          # adb နှေးတာကြောင့် fps မမှန်ရင်
+          # -use_wallclock_as_timestamps 1 နဲ့ timestamp sync မယ်
+          # -----------------------------------------------
+
+          # Background: adb screencap loop → pipe
           (
             while true; do
-              adb exec-out screencap -p > /tmp/latest.tmp 2>/dev/null
-              if [ -s /tmp/latest.tmp ]; then
-                mv -f /tmp/latest.tmp /tmp/latest.png
-              fi
+              # screencap တစ်ကြိမ် ဆွဲပြီး pipe ထဲ ထည့်တာ
+              adb exec-out screencap -p 2>/dev/null >> $PIPE
             done
           ) &
-          CAPTURE_PID=$!
-          echo "✅ Capture loop started! PID: $CAPTURE_PID"
+          ADB_PID=$!
+          echo "✅ ADB capture started! PID: $ADB_PID"
 
-          # ffmpeg စခင် frame အနည်းဆုံး ၁ ခု ရောက်အောင် စောင့်
-          echo "Waiting for first frame..."
-          for i in $(seq 1 30); do
-            if [ -s /tmp/latest.png ]; then
-              echo "✅ First frame received!"
-              break
-            fi
-            sleep 1
-          done
-
-          # -----------------------------------------------
-          # ffmpeg - loop input mode သုံးတာ
-          # -stream_loop -1  : /tmp/latest.png ကို အဆက်မပြတ် loop ဖတ်တာ
-          # -r 30            : 30fps နှုန်းနဲ့ output
-          # -re              : realtime နှုန်းနဲ့ ထုတ်တာ
-          # frame အသစ်ရောက်ရင် mv က file replace လုပ်တာကြောင့်
-          # ffmpeg က next loop မှာ အသစ်ကို ဖတ်မယ်
-          # -----------------------------------------------
-          echo "=== 🎥 Starting YouTube Stream ==="
+          # ffmpeg: pipe ကနေ PNG frames ဖတ်ပြီး YouTube stream
+          # -use_wallclock_as_timestamps: adb နှေးရင် timestamp ကို wall clock နဲ့ align မယ်
+          # -vf fps=30: output ကို 30fps မှာ fix မယ် (adb rate ကိုမဆိုင်)
+          # -fflags +genpts: PTS generate မယ် (stutter ကာကွယ်)
           ffmpeg \
-            -re \
-            -stream_loop -1 \
-            -framerate 30 \
-            -i /tmp/latest.png \
+            -use_wallclock_as_timestamps 1 \
+            -fflags +genpts+discardcorrupt \
+            -f image2pipe \
+            -vcodec png \
+            -i $PIPE \
             -f lavfi \
             -i anullsrc=channel_layout=stereo:sample_rate=44100 \
-            -vf "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,fps=30" \
+            -vf "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,fps=fps=30" \
             -c:v libx264 \
             -preset veryfast \
             -tune zerolatency \
             -pix_fmt yuv420p \
-            -r 30 \
             -g 60 \
             -b:v 3000k \
             -maxrate 3500k \
-            -bufsize 7000k \
+            -bufsize 14000k \
             -c:a aac \
             -ar 44100 \
             -b:a 128k \
+            -shortest \
             -f flv \
             "rtmp://a.rtmp.youtube.com/live2/$YOUTUBE_STREAM_KEY"
 
-          kill $CAPTURE_PID 2>/dev/null
+          kill $ADB_PID 2>/dev/null
+          rm -f $PIPE
           echo "✅ Stream ended!"
           SCRIPT
           chmod +x /tmp/stream.sh
