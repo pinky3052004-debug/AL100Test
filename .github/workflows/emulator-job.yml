@@ -24,18 +24,22 @@ jobs:
       - name: Install FFmpeg and Xvfb
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y ffmpeg xvfb
+          sudo apt-get install -y ffmpeg xvfb x11-utils
 
       - name: Download APK
         run: |
           wget -q -O app.apk "https://github.com/pinky3052004-debug/AL100Test/releases/download/v1.0.0/my_app.apk"
           echo "APK size: $(du -sh app.apk)"
 
+      # ── Xvfb ကို emulator မစတင်မီ အရင် run ပါ ──
       - name: Start Virtual Display
         run: |
-          Xvfb :99 -screen 0 1280x720x24 &
+          Xvfb :99 -screen 0 1280x720x24 -ac &
+          sleep 5
+          export DISPLAY=:99
+          # Display အလုပ်လုပ်မလုပ် စမ်းစစ်ပါ
+          xdpyinfo -display :99 > /dev/null && echo "Display OK!" || echo "Display FAILED!"
           echo "DISPLAY=:99" >> $GITHUB_ENV
-          sleep 3
 
       - name: Run Emulator, Install APK and Stream to YouTube
         uses: reactivecircus/android-emulator-runner@v2
@@ -53,8 +57,10 @@ jobs:
           cores: 2
           force-avd-creation: true
           disable-animations: true
-          emulator-options: -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect -memory 4096
+          # ── -no-window ဖြုတ်လိုက်သည် = screen မြင်ရမည် ──
+          emulator-options: -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect -memory 4096 -display :99
           script: |
+            export DISPLAY=:99
             echo "=== Emulator Ready! ==="
 
             adb root || true
@@ -70,10 +76,44 @@ jobs:
             sleep 2
 
             adb shell am start -a android.intent.action.MAIN -c android.intent.category.LAUNCHER network.kalock.myanmar2d
-            sleep 8
+            sleep 10
             echo "App Launched!"
 
-            ffmpeg -f x11grab -r 30 -s 1280x720 -i :99 -f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 -vcodec libx264 -preset ultrafast -tune zerolatency -pix_fmt yuv420p -g 60 -b:v 2500k -maxrate 2500k -bufsize 5000k -acodec aac -ar 44100 -b:a 128k -f flv "rtmp://a.rtmp.youtube.com/live2/$YOUTUBE_STREAM_KEY"
+            # ── Screenshot စမ်းကြည့်သည် ──
+            adb shell screencap -p /sdcard/screen.png
+            adb pull /sdcard/screen.png /tmp/screen.png
+            echo "Screenshot saved!"
+
+            # ── YouTube Live Stream (bitrate မြင့်) ──
+            echo "Starting YouTube Live Stream..."
+            ffmpeg \
+              -f x11grab \
+              -r 30 \
+              -s 1280x720 \
+              -i :99.0 \
+              -f lavfi \
+              -i anullsrc=channel_layout=stereo:sample_rate=44100 \
+              -vcodec libx264 \
+              -preset ultrafast \
+              -tune zerolatency \
+              -pix_fmt yuv420p \
+              -g 60 \
+              -b:v 3000k \
+              -minrate 3000k \
+              -maxrate 3000k \
+              -bufsize 6000k \
+              -acodec aac \
+              -ar 44100 \
+              -b:a 128k \
+              -f flv \
+              "rtmp://a.rtmp.youtube.com/live2/$YOUTUBE_STREAM_KEY"
+
+      - name: Upload Screenshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: emulator-screenshot
+          path: /tmp/screen.png
 
       - name: Show Logs on Failure
         if: failure()
