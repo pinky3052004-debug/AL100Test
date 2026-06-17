@@ -21,10 +21,10 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Install FFmpeg and Xvfb
+      - name: Install Dependencies
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y ffmpeg xvfb aapt x11-utils
+          sudo apt-get install -y ffmpeg xvfb aapt x11-utils xdotool
 
       - name: Download APK
         run: |
@@ -39,12 +39,9 @@ jobs:
           echo "Xvfb started!"
 
       - name: Create Stream Script
-        env:
-          YOUTUBE_STREAM_KEY: ${{ secrets.YOUTUBE_STREAM_KEY }}
         run: |
           cat > /tmp/stream.sh << 'SCRIPT'
           #!/bin/bash
-          set -e
           export DISPLAY=:99
           echo "=== Emulator Ready! ==="
 
@@ -62,16 +59,23 @@ jobs:
 
           # Screen Unlock
           adb shell input keyevent 82
+          sleep 1
+          adb shell input keyevent 4
+          sleep 1
+          adb shell input keyevent 82
           sleep 2
 
           # App Launch
           echo "=== Launching App ==="
           adb shell am start -n "network.kalock.myanmar2d/.MainActivity"
-          sleep 10
+          sleep 15
           echo "App Launched!"
 
-          # Stream via x11grab (Xvfb display capture)
-          echo "=== Starting YouTube Stream via x11grab ==="
+          # Emulator window maximize on Xvfb
+          sleep 3
+          xdotool search --name "Android Emulator" windowactivate --sync key super+Up 2>/dev/null || true
+
+          echo "=== Starting YouTube Stream ==="
           ffmpeg \
             -f x11grab \
             -framerate 30 \
@@ -112,8 +116,8 @@ jobs:
           cores: 2
           force-avd-creation: true
           disable-animations: true
-          # window mode ဖြင့် run - Xvfb display ပေါ်တွင် ပေါ်မည်
-          emulator-options: -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect -memory 4096 -no-window
+          # -no-window ဖြုတ်လိုက်သည် = Xvfb ပေါ်တွင် ပေါ်မည်
+          emulator-options: -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect -memory 4096
           script: bash /tmp/stream.sh
 
       - name: Show Logs on Failure
