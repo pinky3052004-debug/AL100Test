@@ -53,70 +53,27 @@ jobs:
           cores: 2
           force-avd-creation: true
           disable-animations: true
-          emulator-options: >
-            -no-window
-            -no-audio
-            -no-boot-anim
-            -no-snapshot
-            -gpu swiftshader_indirect
-            -memory 4096
+          emulator-options: -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect -memory 4096
           script: |
             echo "=== Emulator Ready! ==="
 
-            # ── Ad Block ──
             adb root || true
             sleep 2
             adb shell settings put global private_dns_mode hostname || true
             adb shell settings put global private_dns_specifier dns.adguard.com || true
             echo "Ads blocked!"
 
-            # ── APK Install ──
             adb install -r app.apk
             echo "APK Installed!"
 
-            # ── Screen Unlock ──
             adb shell input keyevent 82
             sleep 2
 
-            # ── App Launch (am start သုံးသည်) ──
-            LAUNCHER=$(adb shell cmd package resolve-activity \
-              --brief -c android.intent.category.LAUNCHER \
-              network.kalock.myanmar2d 2>/dev/null | tail -1)
-            echo "Launching: $LAUNCHER"
-
-            if [ -z "$LAUNCHER" ]; then
-              echo "Fallback: using am start with package only"
-              adb shell am start -a android.intent.action.MAIN \
-                -c android.intent.category.LAUNCHER \
-                -n network.kalock.myanmar2d/.MainActivity
-            else
-              adb shell am start -n "$LAUNCHER"
-            fi
-
+            adb shell am start -a android.intent.action.MAIN -c android.intent.category.LAUNCHER network.kalock.myanmar2d
             sleep 8
             echo "App Launched!"
 
-            # ── YouTube Live Stream ──
-            echo "Starting YouTube Live Stream..."
-            ffmpeg \
-              -f x11grab \
-              -r 30 \
-              -s 1280x720 \
-              -i :99 \
-              -f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 \
-              -vcodec libx264 \
-              -preset ultrafast \
-              -tune zerolatency \
-              -pix_fmt yuv420p \
-              -g 60 \
-              -b:v 2500k \
-              -maxrate 2500k \
-              -bufsize 5000k \
-              -acodec aac \
-              -ar 44100 \
-              -b:a 128k \
-              -f flv \
-              "rtmp://a.rtmp.youtube.com/live2/$YOUTUBE_STREAM_KEY"
+            ffmpeg -f x11grab -r 30 -s 1280x720 -i :99 -f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 -vcodec libx264 -preset ultrafast -tune zerolatency -pix_fmt yuv420p -g 60 -b:v 2500k -maxrate 2500k -bufsize 5000k -acodec aac -ar 44100 -b:a 128k -f flv "rtmp://a.rtmp.youtube.com/live2/$YOUTUBE_STREAM_KEY"
 
       - name: Show Logs on Failure
         if: failure()
