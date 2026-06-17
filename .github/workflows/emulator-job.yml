@@ -76,7 +76,32 @@ jobs:
             echo "App Launched!"
 
             echo "=== Starting YouTube Stream ==="
-            adb shell screenrecord --output-format=h264 - 2>/dev/null | ffmpeg -f h264 -i pipe:0 -f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 -vcodec libx264 -preset ultrafast -tune zerolatency -pix_fmt yuv420p -g 60 -b:v 3000k -maxrate 3000k -bufsize 6000k -acodec aac -ar 44100 -b:a 128k -f flv "rtmp://a.rtmp.youtube.com/live2/$YOUTUBE_STREAM_KEY"
+
+            # screenrecord loop - broken pipe ဖြစ်ရင် ပြန်စသည်
+            while true; do
+              adb shell screenrecord --output-format=h264 --time-limit=180 - 2>/dev/null | \
+              ffmpeg \
+                -re \
+                -f h264 \
+                -i pipe:0 \
+                -f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 \
+                -c:v libx264 \
+                -preset veryfast \
+                -tune zerolatency \
+                -pix_fmt yuv420p \
+                -r 30 \
+                -g 60 \
+                -b:v 2500k \
+                -maxrate 2500k \
+                -bufsize 5000k \
+                -c:a aac \
+                -ar 44100 \
+                -b:a 128k \
+                -f flv \
+                "rtmp://a.rtmp.youtube.com/live2/$YOUTUBE_STREAM_KEY" || true
+              echo "Stream ended, restarting in 2s..."
+              sleep 2
+            done
 
       - name: Show Logs on Failure
         if: failure()
