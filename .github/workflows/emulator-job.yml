@@ -30,8 +30,6 @@ jobs:
         run: |
           wget -q -O app.apk "https://github.com/pinky3052004-debug/AL100Test/releases/download/v1.0.0/my_app.apk"
           echo "APK size: $(du -sh app.apk)"
-          echo "=== Launcher Activity ==="
-          aapt dump badging app.apk | grep "launchable-activity"
 
       - name: Start Virtual Display
         run: |
@@ -44,7 +42,6 @@ jobs:
         env:
           DISPLAY: ':99'
           YOUTUBE_STREAM_KEY: ${{ secrets.YOUTUBE_STREAM_KEY }}
-          APP_PACKAGE: 'network.kalock.myanmar2d'
         with:
           api-level: 28
           target: default
@@ -73,13 +70,8 @@ jobs:
             adb shell input keyevent 82
             sleep 2
 
-            echo "=== APK Launcher Activity ==="
-            aapt dump badging app.apk | grep "launchable-activity"
-
-            ACTIVITY=$(aapt dump badging app.apk | grep "launchable-activity" | sed "s/.*name='//" | sed "s/'.*//")
-            echo "Activity: $ACTIVITY"
-
-            adb shell am start -n "$APP_PACKAGE/$ACTIVITY"
+            echo "=== Launching App ==="
+            adb shell am start -n "network.kalock.myanmar2d/.MainActivity"
             sleep 10
             echo "App Launched!"
 
