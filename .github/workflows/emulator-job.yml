@@ -24,7 +24,7 @@ jobs:
       - name: Install Dependencies
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y ffmpeg xvfb aapt x11-utils xdotool
+          sudo apt-get install -y ffmpeg xvfb aapt x11-utils xdotool feh
 
       - name: Download APK
         run: |
@@ -71,10 +71,23 @@ jobs:
           sleep 15
           echo "App Launched!"
 
-          # Emulator window maximize on Xvfb
-          sleep 3
-          xdotool search --name "Android Emulator" windowactivate --sync key super+Up 2>/dev/null || true
+          # Mirror emulator screen to Xvfb using screencap loop
+          echo "=== Starting Screen Mirror ==="
+          while true; do
+            adb exec-out screencap -p > /tmp/frame.png 2>/dev/null
+            if [ -s /tmp/frame.png ]; then
+              DISPLAY=:99 feh --fullscreen --auto-zoom /tmp/frame.png &
+              FEH_PID=$!
+              sleep 0.033
+              kill $FEH_PID 2>/dev/null
+            fi
+          done &
+          MIRROR_PID=$!
+          echo "Mirror PID: $MIRROR_PID"
+          sleep 8
+          echo "Mirror started!"
 
+          # YouTube Live Stream
           echo "=== Starting YouTube Stream ==="
           ffmpeg \
             -f x11grab \
@@ -97,6 +110,8 @@ jobs:
             -b:a 128k \
             -f flv \
             "rtmp://a.rtmp.youtube.com/live2/$YOUTUBE_STREAM_KEY"
+
+          kill $MIRROR_PID 2>/dev/null
           SCRIPT
           chmod +x /tmp/stream.sh
 
@@ -116,7 +131,6 @@ jobs:
           cores: 2
           force-avd-creation: true
           disable-animations: true
-          # -no-window ဖြုတ်လိုက်သည် = Xvfb ပေါ်တွင် ပေါ်မည်
           emulator-options: -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect -memory 4096
           script: bash /tmp/stream.sh
 
