@@ -24,13 +24,100 @@ jobs:
       - name: Install Dependencies
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y ffmpeg
+          sudo apt-get install -y ffmpeg python3
           echo "✅ Dependencies installed!"
 
       - name: Download APK
         run: |
           wget -q -O /tmp/app.apk "https://github.com/pinky3052004-debug/AL100Test/releases/download/v1.0.0/my_app.apk"
           echo "✅ APK size: $(du -sh /tmp/app.apk)"
+
+      # -----------------------------------------------
+      # Python bridge script ဆောက်တာ
+      # ဒီ script သည်:
+      # 1. adb screencap ကို loop ဆွဲပြီး PNG bytes ရယူတယ်
+      # 2. PNG တစ်ကြိမ်ပြီးတိုင်း ffmpeg stdin ထဲ တိုက်ရိုက် ထည့်တယ်
+      # 3. adb နှေးရင် နောက်ဆုံး frame ကို ထပ်ပို့တာကြောင့် fps smooth
+      # 4. ffmpeg က မည်သည့်အချိန်မဆို stream ကို ဆက်ရနေမယ်
+      # -----------------------------------------------
+      - name: Create Python Bridge Script
+        run: |
+          cat > /tmp/capture.py << 'PYEOF'
+          #!/usr/bin/env python3
+          import subprocess
+          import sys
+          import time
+          import threading
+
+          TARGET_FPS = 30
+          FRAME_INTERVAL = 1.0 / TARGET_FPS  # 0.033s
+
+          last_frame = None
+          frame_lock = threading.Lock()
+          running = True
+
+          def capture_loop():
+              """Background thread: adb screencap ဆွဲနေတာ"""
+              global last_frame, running
+              while running:
+                  try:
+                      result = subprocess.run(
+                          ['adb', 'exec-out', 'screencap', '-p'],
+                          capture_output=True,
+                          timeout=10
+                      )
+                      if result.returncode == 0 and len(result.stdout) > 1000:
+                          with frame_lock:
+                              last_frame = result.stdout
+                  except Exception as e:
+                      sys.stderr.write(f"Capture error: {e}\n")
+                      time.sleep(0.5)
+
+          # Background thread စတင်
+          t = threading.Thread(target=capture_loop, daemon=True)
+          t.start()
+
+          # ပထမ frame ရောက်အောင် စောင့်
+          sys.stderr.write("Waiting for first frame...\n")
+          for _ in range(60):
+              with frame_lock:
+                  if last_frame:
+                      break
+              time.sleep(0.5)
+
+          if not last_frame:
+              sys.stderr.write("ERROR: No frame received!\n")
+              sys.exit(1)
+
+          sys.stderr.write("✅ Streaming started!\n")
+
+          # stdout ကို ffmpeg stdin ထဲ pipe လုပ်မယ်
+          # 30fps နှုန်းနဲ့ frame တွေ ပို့တာ
+          # adb နှေးရင် နောက်ဆုံး frame ထပ်ပို့
+          frame_count = 0
+          out = sys.stdout.buffer
+          try:
+              while True:
+                  start = time.time()
+                  with frame_lock:
+                      frame = last_frame
+                  if frame:
+                      out.write(frame)
+                      out.flush()
+                      frame_count += 1
+                      if frame_count % 150 == 0:  # 5 sec တိုင်း log
+                          sys.stderr.write(f"📸 Frames sent: {frame_count}\n")
+                  elapsed = time.time() - start
+                  sleep_time = FRAME_INTERVAL - elapsed
+                  if sleep_time > 0:
+                      time.sleep(sleep_time)
+          except BrokenPipeError:
+              sys.stderr.write("ffmpeg pipe closed.\n")
+          finally:
+              running = False
+          PYEOF
+          chmod +x /tmp/capture.py
+          echo "✅ Python bridge created!"
 
       - name: Create Stream Script
         run: |
@@ -75,70 +162,26 @@ jobs:
           sleep 1
           echo "✅ Dialog dismissed!"
 
-          # -----------------------------------------------
-          # ** V5 - အကောင်းဆုံး နည်းလမ်း **
-          #
-          # adb exec-out screencap -p က raw PNG bytes တွေကို
-          # stdout ကနေ ထုတ်တယ်
-          #
-          # ffmpeg -f image2pipe သည် stdin ကနေ PNG stream ကို
-          # တစ်ဆက်တည်း ဖတ်နိုင်တယ်
-          #
-          # FIFO pipe သုံးပြီး:
-          #   adb screencap → FIFO → ffmpeg → YouTube
-          #
-          # ဒါပေမဲ့ adb screencap နှေးတဲ့ပြဿနာကို
-          # tee + frame duplicate နဲ့ ဖြေရှင်းမယ်:
-          #   - adb screencap loop → /tmp/frame_NNN.png ဆွဲသိမ်း
-          #   - ffmpeg က /tmp/frames/ folder ကို glob ဖတ်
-          #   - frame အသစ်မရောက်သေးရင် ffmpeg က rate ချိန်ပြီး ဟောင်းကိုထပ်ဆွဲ
-          # -----------------------------------------------
+          echo "=== 🎥 Starting Stream via Python bridge ==="
 
-          echo "=== 📸 Starting capture + stream pipeline ==="
-
-          # frames folder ဆောက်တာ
-          mkdir -p /tmp/frames
-          FRAME_DIR=/tmp/frames
-          FRAME_NUM=0
-
-          # ffmpeg ကို named pipe မှတဆင့် PNG stream ပို့မယ်
-          PIPE=/tmp/ffpipe
-          mkfifo $PIPE
-
-          # -----------------------------------------------
-          # adb screencap → pipe ထဲ တိုက်ရိုက် stream
-          # ffmpeg က image2pipe format နဲ့ ဖတ်မယ်
-          # adb နှေးတာကြောင့် fps မမှန်ရင်
-          # -use_wallclock_as_timestamps 1 နဲ့ timestamp sync မယ်
-          # -----------------------------------------------
-
-          # Background: adb screencap loop → pipe
-          (
-            while true; do
-              # screencap တစ်ကြိမ် ဆွဲပြီး pipe ထဲ ထည့်တာ
-              adb exec-out screencap -p 2>/dev/null >> $PIPE
-            done
-          ) &
-          ADB_PID=$!
-          echo "✅ ADB capture started! PID: $ADB_PID"
-
-          # ffmpeg: pipe ကနေ PNG frames ဖတ်ပြီး YouTube stream
-          # -use_wallclock_as_timestamps: adb နှေးရင် timestamp ကို wall clock နဲ့ align မယ်
-          # -vf fps=30: output ကို 30fps မှာ fix မယ် (adb rate ကိုမဆိုင်)
-          # -fflags +genpts: PTS generate မယ် (stutter ကာကွယ်)
+          # Python capture → ffmpeg stdin pipe
+          # python3 /tmp/capture.py  : 30fps নিয়মিত PNG frames → stdout
+          # ffmpeg -i pipe:0          : stdin কেকে video source হিসেবে পড়ে
+          python3 /tmp/capture.py 2>/tmp/capture.log | \
           ffmpeg \
-            -use_wallclock_as_timestamps 1 \
-            -fflags +genpts+discardcorrupt \
+            -re \
             -f image2pipe \
+            -framerate 30 \
             -vcodec png \
-            -i $PIPE \
+            -i pipe:0 \
             -f lavfi \
             -i anullsrc=channel_layout=stereo:sample_rate=44100 \
-            -vf "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,fps=fps=30" \
+            -vf "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2" \
             -c:v libx264 \
             -preset veryfast \
             -tune zerolatency \
             -pix_fmt yuv420p \
+            -r 30 \
             -g 60 \
             -b:v 3000k \
             -maxrate 3500k \
@@ -146,12 +189,11 @@ jobs:
             -c:a aac \
             -ar 44100 \
             -b:a 128k \
-            -shortest \
             -f flv \
             "rtmp://a.rtmp.youtube.com/live2/$YOUTUBE_STREAM_KEY"
 
-          kill $ADB_PID 2>/dev/null
-          rm -f $PIPE
+          echo "=== Capture Log ==="
+          cat /tmp/capture.log
           echo "✅ Stream ended!"
           SCRIPT
           chmod +x /tmp/stream.sh
@@ -184,7 +226,7 @@ jobs:
       - name: Show Logs on Failure
         if: failure()
         run: |
+          echo "=== Capture Log ==="
+          cat /tmp/capture.log 2>/dev/null || echo "No capture log"
           echo "=== Emulator Log ==="
           cat /tmp/emulator.log 2>/dev/null || echo "No emulator log"
-          echo "=== ADB Devices ==="
-          adb devices 2>/dev/null || echo "ADB not available"
