@@ -9,34 +9,29 @@ jobs:
     timeout-minutes: 350
 
     steps:
-      # KVM enable
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      # Java 17
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
 
-      # Dependencies - Xvfb မလိုတော့ဘူး၊ ffmpeg တစ်ခုတည်းနဲ့ လုပ်မယ်
       - name: Install Dependencies
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y ffmpeg
+          sudo apt-get install -y ffmpeg bc
           echo "✅ Dependencies installed!"
 
-      # APK Download
       - name: Download APK
         run: |
           wget -q -O /tmp/app.apk "https://github.com/pinky3052004-debug/AL100Test/releases/download/v1.0.0/my_app.apk"
           echo "✅ APK size: $(du -sh /tmp/app.apk)"
 
-      # Stream Script
       - name: Create Stream Script
         run: |
           cat > /tmp/stream.sh << 'SCRIPT'
@@ -71,65 +66,78 @@ jobs:
           echo "✅ App Launched!"
 
           # Dialog dismiss
-          echo "=== 🔧 Dismissing dialog... ==="
           sleep 3
           adb shell input keyevent 66
           sleep 1
           adb shell input tap 512 328
           sleep 2
+          adb shell input keyevent 66
+          sleep 1
           echo "✅ Dialog dismissed!"
 
           # -----------------------------------------------
-          # ** အဓိက FIX - Xvfb လုံးဝ မသုံးတော့ဘူး **
+          # ** V4 အဓိက FIX - Frame Rate ပြဿနာ ဖြေရှင်းချက် **
           #
-          # adb exec-out screencap -p သည် raw PNG bytes တွေကို
-          # stdout ကနေ ထုတ်ပေးတယ်
-          #
-          # ffmpeg သည် pipe ကနေ PNG frame တွေကို တစ်ခုပြီးတစ်ခု
-          # ဖတ်ပြီး တိုက်ရိုက် RTMP ကို stream တာ
-          #
-          # Xvfb, feh, scrcpy, xwud - တစ်ခုမှ မလိုတော့ဘူး!
-          # Black screen ပြဿနာ လုံးဝ မဖြစ်တော့ဘူး!
+          # adb screencap နှေးတာကြောင့် "Poor" signal ဖြစ်တာ
+          # ဖြေရှင်းနည်း:
+          # 1. adb screencap loop ကို background မှာ မြန်သလောက် run
+          # 2. /tmp/latest.png မှာ နောက်ဆုံး frame ကို သိမ်းထား
+          # 3. ffmpeg က /tmp/latest.png ကို 30fps နှုန်းနဲ့ ဖတ်ပြီး stream
+          #    (frame အသစ်မရောက်သေးရင် ဟောင်းတာကိုပဲ ထပ်သုံးတာ)
+          #    => YouTube မှာ smooth, Poor မဖြစ်တော့ဘူး
           # -----------------------------------------------
-          echo "=== 🎥 Starting Direct Stream (no Xvfb needed)... ==="
 
-          # adb screencap frame တွေကို loop ဆွဲပြီး
-          # ffmpeg concat pipe ထဲ ထည့်သွင်းမယ်
-          # ffmpeg က image2pipe format နဲ့ ဖတ်မယ်
+          echo "=== 📸 Starting background frame capture ==="
 
-          # Named pipe ဆောက်တာ
-          mkfifo /tmp/videopipe
-
-          # Background မှာ adb screencap loop လုပ်ပြီး pipe ထဲ ထည့်တာ
+          # Capture loop - မြန်သလောက် screencap ဆွဲတာ
+          # atomic write - .tmp ရေးပြီး rename မှ ffmpeg ဖတ်တာ
           (
             while true; do
-              adb exec-out screencap -p 2>/dev/null
-              # 30fps အတွက် ~33ms စောင့်တာ
-              sleep 0.033
+              adb exec-out screencap -p > /tmp/latest.tmp 2>/dev/null
+              if [ -s /tmp/latest.tmp ]; then
+                mv -f /tmp/latest.tmp /tmp/latest.png
+              fi
             done
-          ) > /tmp/videopipe &
+          ) &
           CAPTURE_PID=$!
           echo "✅ Capture loop started! PID: $CAPTURE_PID"
 
-          # ffmpeg က pipe ကနေ PNG frame တွေ ဖတ်ပြီး YouTube ကို stream တာ
-          # -re မသုံးဘူး - pipe rate နဲ့ sync လုပ်မယ်
+          # ffmpeg စခင် frame အနည်းဆုံး ၁ ခု ရောက်အောင် စောင့်
+          echo "Waiting for first frame..."
+          for i in $(seq 1 30); do
+            if [ -s /tmp/latest.png ]; then
+              echo "✅ First frame received!"
+              break
+            fi
+            sleep 1
+          done
+
+          # -----------------------------------------------
+          # ffmpeg - loop input mode သုံးတာ
+          # -stream_loop -1  : /tmp/latest.png ကို အဆက်မပြတ် loop ဖတ်တာ
+          # -r 30            : 30fps နှုန်းနဲ့ output
+          # -re              : realtime နှုန်းနဲ့ ထုတ်တာ
+          # frame အသစ်ရောက်ရင် mv က file replace လုပ်တာကြောင့်
+          # ffmpeg က next loop မှာ အသစ်ကို ဖတ်မယ်
+          # -----------------------------------------------
+          echo "=== 🎥 Starting YouTube Stream ==="
           ffmpeg \
-            -f image2pipe \
+            -re \
+            -stream_loop -1 \
             -framerate 30 \
-            -vcodec png \
-            -i /tmp/videopipe \
+            -i /tmp/latest.png \
             -f lavfi \
             -i anullsrc=channel_layout=stereo:sample_rate=44100 \
-            -vf "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2" \
+            -vf "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,fps=30" \
             -c:v libx264 \
-            -preset ultrafast \
+            -preset veryfast \
             -tune zerolatency \
             -pix_fmt yuv420p \
             -r 30 \
             -g 60 \
-            -b:v 4500k \
-            -maxrate 4500k \
-            -bufsize 9000k \
+            -b:v 3000k \
+            -maxrate 3500k \
+            -bufsize 7000k \
             -c:a aac \
             -ar 44100 \
             -b:a 128k \
@@ -137,13 +145,11 @@ jobs:
             "rtmp://a.rtmp.youtube.com/live2/$YOUTUBE_STREAM_KEY"
 
           kill $CAPTURE_PID 2>/dev/null
-          rm -f /tmp/videopipe
           echo "✅ Stream ended!"
           SCRIPT
           chmod +x /tmp/stream.sh
           echo "✅ Stream script created!"
 
-      # Emulator Run + Stream
       - name: Run Emulator and Stream
         uses: reactivecircus/android-emulator-runner@v2
         env:
@@ -168,7 +174,6 @@ jobs:
             -no-window
           script: bash /tmp/stream.sh
 
-      # Error log
       - name: Show Logs on Failure
         if: failure()
         run: |
