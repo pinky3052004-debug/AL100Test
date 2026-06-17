@@ -23,18 +23,11 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      # Dependencies install
-      # feh မလိုတော့ဘူး - ffmpeg တစ်ခုတည်းနဲ့ လုပ်မယ်
+      # Dependencies - Xvfb မလိုတော့ဘူး၊ ffmpeg တစ်ခုတည်းနဲ့ လုပ်မယ်
       - name: Install Dependencies
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y \
-            ffmpeg \
-            xvfb \
-            x11-utils \
-            xdotool \
-            x11vnc \
-            imagemagick
+          sudo apt-get install -y ffmpeg
           echo "✅ Dependencies installed!"
 
       # APK Download
@@ -43,20 +36,11 @@ jobs:
           wget -q -O /tmp/app.apk "https://github.com/pinky3052004-debug/AL100Test/releases/download/v1.0.0/my_app.apk"
           echo "✅ APK size: $(du -sh /tmp/app.apk)"
 
-      # Virtual Display start
-      - name: Start Virtual Display
-        run: |
-          Xvfb :99 -screen 0 1280x720x24 -ac +extension GLX +render -noreset &
-          sleep 5
-          echo "DISPLAY=:99" >> $GITHUB_ENV
-          echo "✅ Xvfb started!"
-
-      # Stream Script ဆောက်တာ
+      # Stream Script
       - name: Create Stream Script
         run: |
           cat > /tmp/stream.sh << 'SCRIPT'
           #!/bin/bash
-          export DISPLAY=:99
           echo "=== ✅ Emulator Ready! ==="
 
           adb root || true
@@ -86,66 +70,57 @@ jobs:
           sleep 15
           echo "✅ App Launched!"
 
-          # -----------------------------------------------
-          # Dialog dismiss - Nested Virtualization Warning
-          # -----------------------------------------------
+          # Dialog dismiss
           echo "=== 🔧 Dismissing dialog... ==="
           sleep 3
           adb shell input keyevent 66
           sleep 1
           adb shell input tap 512 328
           sleep 2
-          adb shell input keyevent 66
-          sleep 1
           echo "✅ Dialog dismissed!"
 
           # -----------------------------------------------
-          # ** အဓိက FIX **
-          # feh / scrcpy မသုံးတော့ဘူး
-          # adb screencap -> pipe -> ffmpeg -> Xvfb ထဲ ဆွဲသွင်းတာ
-          # race condition ပြဿနာ လုံးဝ မဖြစ်တော့ဘူး
+          # ** အဓိက FIX - Xvfb လုံးဝ မသုံးတော့ဘူး **
+          #
+          # adb exec-out screencap -p သည် raw PNG bytes တွေကို
+          # stdout ကနေ ထုတ်ပေးတယ်
+          #
+          # ffmpeg သည် pipe ကနေ PNG frame တွေကို တစ်ခုပြီးတစ်ခု
+          # ဖတ်ပြီး တိုက်ရိုက် RTMP ကို stream တာ
+          #
+          # Xvfb, feh, scrcpy, xwud - တစ်ခုမှ မလိုတော့ဘူး!
+          # Black screen ပြဿနာ လုံးဝ မဖြစ်တော့ဘူး!
           # -----------------------------------------------
-          echo "=== 📺 Starting screen mirror via ffmpeg pipe... ==="
+          echo "=== 🎥 Starting Direct Stream (no Xvfb needed)... ==="
 
-          # Xvfb ထဲကို background မှာ frame တွေ ဆက်တိုက် ထည့်သွင်းမယ်
-          # atomic write သုံးတာ - tmp file ရေးပြီးမှ rename လုပ်တာ
-          # ဒါဆို feh/ffmpeg က incomplete file ကို မဖတ်တော့ဘူး
+          # adb screencap frame တွေကို loop ဆွဲပြီး
+          # ffmpeg concat pipe ထဲ ထည့်သွင်းမယ်
+          # ffmpeg က image2pipe format နဲ့ ဖတ်မယ်
+
+          # Named pipe ဆောက်တာ
+          mkfifo /tmp/videopipe
+
+          # Background မှာ adb screencap loop လုပ်ပြီး pipe ထဲ ထည့်တာ
           (
             while true; do
-              # atomic write: .tmp ကို ရေးပြီး rename လုပ်တာ
-              adb exec-out screencap -p > /tmp/frame.tmp 2>/dev/null
-              if [ -s /tmp/frame.tmp ]; then
-                mv -f /tmp/frame.tmp /tmp/frame.png
-
-                # convert (ImageMagick) သုံးပြီး Xvfb root window မှာ background set လုပ်တာ
-                # feh မလိုဘူး၊ race condition မဖြစ်ဘူး
-                DISPLAY=:99 convert /tmp/frame.png \
-                  -resize 1280x720! \
-                  -depth 8 \
-                  bgr:- 2>/dev/null | \
-                DISPLAY=:99 xwud -raw -geometry 1280x720+0+0 2>/dev/null &
-                XWUD_PID=$!
-                sleep 0.04
-                kill $XWUD_PID 2>/dev/null
-              fi
-              sleep 0.016
+              adb exec-out screencap -p 2>/dev/null
+              # 30fps အတွက် ~33ms စောင့်တာ
+              sleep 0.033
             done
-          ) &
-          MIRROR_PID=$!
-          echo "✅ Mirror started! PID: $MIRROR_PID"
-          sleep 8
+          ) > /tmp/videopipe &
+          CAPTURE_PID=$!
+          echo "✅ Capture loop started! PID: $CAPTURE_PID"
 
-          # -----------------------------------------------
-          # YouTube Live Stream
-          # -----------------------------------------------
-          echo "=== 🎥 Starting YouTube Stream ==="
+          # ffmpeg က pipe ကနေ PNG frame တွေ ဖတ်ပြီး YouTube ကို stream တာ
+          # -re မသုံးဘူး - pipe rate နဲ့ sync လုပ်မယ်
           ffmpeg \
-            -f x11grab \
+            -f image2pipe \
             -framerate 30 \
-            -video_size 1280x720 \
-            -i :99.0+0,0 \
+            -vcodec png \
+            -i /tmp/videopipe \
             -f lavfi \
             -i anullsrc=channel_layout=stereo:sample_rate=44100 \
+            -vf "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2" \
             -c:v libx264 \
             -preset ultrafast \
             -tune zerolatency \
@@ -161,7 +136,8 @@ jobs:
             -f flv \
             "rtmp://a.rtmp.youtube.com/live2/$YOUTUBE_STREAM_KEY"
 
-          kill $MIRROR_PID 2>/dev/null
+          kill $CAPTURE_PID 2>/dev/null
+          rm -f /tmp/videopipe
           echo "✅ Stream ended!"
           SCRIPT
           chmod +x /tmp/stream.sh
@@ -171,7 +147,6 @@ jobs:
       - name: Run Emulator and Stream
         uses: reactivecircus/android-emulator-runner@v2
         env:
-          DISPLAY: ':99'
           YOUTUBE_STREAM_KEY: ${{ secrets.YOUTUBE_STREAM_KEY }}
         with:
           api-level: 28
@@ -201,5 +176,3 @@ jobs:
           cat /tmp/emulator.log 2>/dev/null || echo "No emulator log"
           echo "=== ADB Devices ==="
           adb devices 2>/dev/null || echo "ADB not available"
-          echo "=== Display Check ==="
-          DISPLAY=:99 xdpyinfo 2>/dev/null | head -20 || echo "Display not available"
