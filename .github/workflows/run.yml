@@ -1,143 +1,36 @@
-name: Android Emulator + YouTube Live Stream
+name: Android Emulator 5x Parallel Stream
 
 on:
-  workflow_dispatch:  # Manual trigger (လက်ဖြင့် စတင်နိုင်သည်)
+  workflow_dispatch:
 
+# ── 5 Jobs တပြိုင်နက် run မည် ──
 jobs:
-  stream:
-    runs-on: ubuntu-latest
-    timeout-minutes: 360  # 6 နာရီ
+  emulator-1:
+    uses: ./.github/workflows/emulator-job.yml
+    with:
+      job_number: 1
+    secrets: inherit
 
-    steps:
-      # ── Step 1: KVM Hardware Acceleration ဖွင့်ခြင်း ──
-      - name: Enable KVM
-        run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
+  emulator-2:
+    uses: ./.github/workflows/emulator-job.yml
+    with:
+      job_number: 2
+    secrets: inherit
 
-      # ── Step 2: Java ထည့်ခြင်း ──
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'temurin'
+  emulator-3:
+    uses: ./.github/workflows/emulator-job.yml
+    with:
+      job_number: 3
+    secrets: inherit
 
-      # ── Step 3: Android SDK ထည့်ခြင်း ──
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+  emulator-4:
+    uses: ./.github/workflows/emulator-job.yml
+    with:
+      job_number: 4
+    secrets: inherit
 
-      # ── Step 4: FFmpeg ထည့်ခြင်း (YouTube Streaming အတွက်) ──
-      - name: Install FFmpeg & Virtual Display
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ffmpeg xvfb x11vnc
-
-      # ── Step 5: Android System Image ဒေါင်းလုဒ် ──
-      - name: Download Android System Image
-        run: |
-          sdkmanager --install "system-images;android-34;google_apis;x86_64"
-          sdkmanager --install "platform-tools"
-          sdkmanager --install "emulator"
-          echo "y" | sdkmanager --licenses
-
-      # ── Step 6: AVD (Emulator) တည်ဆောက်ခြင်း ──
-      - name: Create AVD
-        run: |
-          echo "no" | avdmanager create avd \
-            --name "test_avd" \
-            --package "system-images;android-34;google_apis;x86_64" \
-            --device "pixel_6" \
-            --force
-
-      # ── Step 7: APK ဒေါင်းလုဒ် ──
-      - name: Download APK
-        run: |
-          wget -O app.apk "https://github.com/pinky3052004-debug/AL100Test/releases/download/v1.0.0/my_app.apk"
-          ls -la app.apk
-
-      # ── Step 8: Virtual Display စတင်ခြင်း ──
-      - name: Start Virtual Display
-        run: |
-          Xvfb :99 -screen 0 1280x720x24 &
-          echo "DISPLAY=:99" >> $GITHUB_ENV
-          sleep 2
-
-      # ── Step 9: Emulator စတင်ခြင်း ──
-      - name: Start Android Emulator
-        run: |
-          export DISPLAY=:99
-          $ANDROID_SDK_ROOT/emulator/emulator \
-            -avd test_avd \
-            -no-audio \
-            -no-snapshot \
-            -gpu swiftshader_indirect \
-            -no-boot-anim \
-            -wipe-data &
-          echo "Emulator starting..."
-
-      # ── Step 10: Emulator Boot ပြီးသည်အထိ စောင့်ခြင်း ──
-      - name: Wait for Emulator Boot
-        run: |
-          adb wait-for-device
-          timeout 300 bash -c 'until adb shell getprop sys.boot_completed 2>/dev/null | grep -q "1"; do sleep 3; echo "Waiting..."; done'
-          echo "Emulator is ready!"
-          sleep 5
-
-      # ── Step 11: Ad Block (Hosts File ပြင်ခြင်း) ──
-      - name: Block Ads on Emulator
-        run: |
-          # Emulator ထဲမှ hosts file ကို ad servers ပိတ်ရန် ပြင်ခြင်း
-          adb root
-          sleep 2
-          adb shell "mount -o rw,remount /system" || true
-          
-          # Google Ads domains ပိတ်ခြင်း
-          adb shell "echo '127.0.0.1 ads.google.com' >> /etc/hosts" || true
-          adb shell "echo '127.0.0.1 googleads.g.doubleclick.net' >> /etc/hosts" || true
-          adb shell "echo '127.0.0.1 pagead2.googlesyndication.com' >> /etc/hosts" || true
-          adb shell "echo '127.0.0.1 adservice.google.com' >> /etc/hosts" || true
-          adb shell "echo '127.0.0.1 ad.doubleclick.net' >> /etc/hosts" || true
-          
-          echo "Ads blocked!"
-
-      # ── Step 12: APK ထည့်ခြင်း ──
-      - name: Install APK
-        run: |
-          adb install -r app.apk
-          echo "APK installed!"
-
-      # ── Step 13: App ဖွင့်ခြင်း ──
-      - name: Launch App
-        run: |
-          APP_PACKAGE="network.kalock.myanmar2d"
-          adb shell monkey -p $APP_PACKAGE -c android.intent.category.LAUNCHER 1
-          sleep 5
-          echo "App launched!"
-
-      # ── Step 14: YouTube Live Streaming စတင်ခြင်း ──
-      - name: Stream to YouTube Live
-        env:
-          YOUTUBE_STREAM_KEY: ${{ secrets.YOUTUBE_STREAM_KEY }}
-        run: |
-          export DISPLAY=:99
-          
-          # FFmpeg မှ emulator screen ကို YouTube သို့ stream လုပ်ခြင်း
-          ffmpeg \
-            -f x11grab \
-            -r 30 \
-            -s 1280x720 \
-            -i :99 \
-            -f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 \
-            -vcodec libx264 \
-            -preset veryfast \
-            -pix_fmt yuv420p \
-            -g 60 \
-            -b:v 2500k \
-            -maxrate 2500k \
-            -bufsize 5000k \
-            -acodec aac \
-            -ar 44100 \
-            -b:a 128k \
-            -f flv \
-            "rtmp://a.rtmp.youtube.com/live2/$YOUTUBE_STREAM_KEY"
+  emulator-5:
+    uses: ./.github/workflows/emulator-job.yml
+    with:
+      job_number: 5
+    secrets: inherit
