@@ -24,180 +24,318 @@ jobs:
       - name: Install Dependencies
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y ffmpeg python3
-          echo "✅ Dependencies installed!"
+          sudo apt-get install -y ffmpeg python3 python3-pip fonts-dejavu-core
+          pip3 install Pillow --break-system-packages
+          echo "✅ Done!"
 
       - name: Download APK
         run: |
           wget -q -O /tmp/app.apk "https://github.com/pinky3052004-debug/AL100Test/releases/download/v1.0.0/my_app.apk"
-          echo "✅ APK size: $(du -sh /tmp/app.apk)"
+          echo "✅ APK: $(du -sh /tmp/app.apk)"
 
-      # -----------------------------------------------
-      # Python bridge script ဆောက်တာ
-      # ဒီ script သည်:
-      # 1. adb screencap ကို loop ဆွဲပြီး PNG bytes ရယူတယ်
-      # 2. PNG တစ်ကြိမ်ပြီးတိုင်း ffmpeg stdin ထဲ တိုက်ရိုက် ထည့်တယ်
-      # 3. adb နှေးရင် နောက်ဆုံး frame ကို ထပ်ပို့တာကြောင့် fps smooth
-      # 4. ffmpeg က မည်သည့်အချိန်မဆို stream ကို ဆက်ရနေမယ်
-      # -----------------------------------------------
-      - name: Create Python Bridge Script
+      # ─────────────────────────────────────────────────────────────────
+      # Main Python script: capture + compose + stream
+      # ─────────────────────────────────────────────────────────────────
+      - name: Create Compositor Script
         run: |
-          cat > /tmp/capture.py << 'PYEOF'
+          cat > /tmp/compositor.py << 'PYEOF'
           #!/usr/bin/env python3
-          import subprocess
-          import sys
-          import time
-          import threading
+          """
+          compositor.py
+          Captures adb screen, composes a 1280x720 frame with beautiful overlay,
+          and pumps PNG frames into ffmpeg via stdout.
 
-          TARGET_FPS = 30
-          FRAME_INTERVAL = 1.0 / TARGET_FPS  # 0.033s
+          Layout (inspired by reference screenshot):
+          ┌──────────────────────────────────────────────────────────────┐
+          │  YELLOW BG (#FFD700)                                         │
+          │                                                              │
+          │  LEFT:                         RIGHT:                        │
+          │  [Red pill] 12:01 PM           [Red pill] 11-06-2026        │
+          │  [Clock box] 09:25:41          [Purple] မိန်း               │
+          │  [Blue box] ကြာသပတေး နေ့       [Green big] 72-78-44        │
+          │             နေ့နံ              [Purple] အရံ                 │
+          │  [Red box]  ထွက်ကြဟန်း        [Green big] 49-99-95        │
+          │  [Bottom]  ဟောတိပ် 2-8-6      ပတ်သီး 7-4-9               │
+          │                                                              │
+          │               [ PHONE SCREEN (center) ]                     │
+          └──────────────────────────────────────────────────────────────┘
+          """
 
-          last_frame = None
-          frame_lock = threading.Lock()
+          import subprocess, sys, time, threading, io, random, datetime, os
+          from PIL import Image, ImageDraw, ImageFont, ImageFilter
+
+          # ── Config ──────────────────────────────────────────────────
+          W, H = 1280, 720
+          FPS  = 30
+          INTERVAL = 1.0 / FPS
+
+          # Myanmar time UTC+6:30
+          def mmt_now():
+              return datetime.datetime.utcnow() + datetime.timedelta(hours=6, minutes=30)
+
+          now   = mmt_now()
+          hour  = now.hour
+          day   = now.strftime("%A")       # Wednesday
+          date  = now.strftime("%d-%m-%Y") # 17-06-2026
+
+          if hour < 12:
+              SESS_TIME  = "12:01 PM"
+              SESS_LABEL = f"{day}\nMorning Live"
+          else:
+              SESS_TIME  = "4:30 PM"
+              SESS_LABEL = f"{day}\nEvening Live"
+
+          def rnd3():
+              return f"{random.randint(0,99):02d}-{random.randint(0,99):02d}-{random.randint(0,99):02d}"
+
+          PAT  = rnd3()
+          MAIN = rnd3()
+          ALT  = rnd3()
+
+          sys.stderr.write(f"Session: {SESS_TIME} | {SESS_LABEL.strip()} | {date}\n")
+          sys.stderr.write(f"PAT={PAT}  MAIN={MAIN}  ALT={ALT}\n")
+
+          # ── Fonts ────────────────────────────────────────────────────
+          def load_font(size, bold=True):
+              paths = [
+                  "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+                  "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+              ]
+              for p in paths:
+                  if os.path.exists(p):
+                      return ImageFont.truetype(p, size)
+              return ImageFont.load_default()
+
+          F_HUGE   = load_font(72)
+          F_BIG    = load_font(52)
+          F_MED    = load_font(36)
+          F_SMALL  = load_font(24)
+          F_TINY   = load_font(18)
+
+          # ── Colors ───────────────────────────────────────────────────
+          YELLOW  = "#FFD700"
+          RED     = "#CC0000"
+          DKRED   = "#8B0000"
+          GREEN   = "#00AA44"
+          DKGREEN = "#006622"
+          PURPLE  = "#6A0DAD"
+          DKPURPLE= "#3D007A"
+          BLUE    = "#1565C0"
+          DKBLUE  = "#0D3B7A"
+          WHITE   = "#FFFFFF"
+          BLACK   = "#111111"
+          AMBER   = "#E65C00"
+
+          # ── Helper: draw rounded rectangle ──────────────────────────
+          def pill(draw, x1, y1, x2, y2, fill, outline=None, r=18):
+              draw.rounded_rectangle([x1,y1,x2,y2], radius=r, fill=fill,
+                                     outline=outline, width=3 if outline else 0)
+
+          def text_center(draw, txt, cx, cy, font, color):
+              bbox = draw.textbbox((0,0), txt, font=font)
+              tw = bbox[2]-bbox[0]; th = bbox[3]-bbox[1]
+              draw.text((cx-tw//2, cy-th//2), txt, font=font, fill=color)
+
+          def text_shadow(draw, txt, x, y, font, color, shadow="#000000", off=3):
+              draw.text((x+off, y+off), txt, font=font, fill=shadow+"99")
+              draw.text((x, y), txt, font=font, fill=color)
+
+          # ── Build static background (generated once) ─────────────────
+          def build_bg():
+              img = Image.new("RGB", (W, H), YELLOW)
+              d   = ImageDraw.Draw(img)
+
+              # ── LEFT SIDE ──────────────────────────────────────────
+
+              # Session time red pill (top left)
+              pill(d, 22, 18, 308, 88, RED, outline=DKRED)
+              text_center(d, SESS_TIME, 165, 53, F_BIG, WHITE)
+
+              # Clock box (white border)
+              pill(d, 22, 100, 308, 168, WHITE, outline="#AAAAAA", r=14)
+              # clock text drawn dynamically
+
+              # Day label blue pill
+              pill(d, 22, 180, 308, 260, BLUE, outline=DKBLUE)
+              lines = SESS_LABEL.strip().split("\n")
+              if len(lines) == 2:
+                  text_center(d, lines[0], 165, 205, F_SMALL, WHITE)
+                  text_center(d, lines[1], 165, 238, F_SMALL, WHITE)
+              else:
+                  text_center(d, lines[0], 165, 220, F_MED, WHITE)
+
+              # Decorative red box (ထွက်ကြဟန်း style)
+              pill(d, 22, 272, 308, 352, RED, outline=DKRED)
+              text_center(d, "ထွက်ကြဟန်း", 165, 312, F_MED, WHITE)
+
+              # Bottom left: ဟောတိပ် + PAT numbers
+              pill(d, 22, 364, 308, 420, AMBER, outline="#8B4500", r=12)
+              text_center(d, "ဟောတိပ်", 100, 392, F_SMALL, WHITE)
+              # PAT pill
+              pill(d, 22, 430, 308, 500, BLACK+"CC", r=12)
+              text_center(d, PAT, 165, 465, F_BIG, YELLOW)
+
+              # ── RIGHT SIDE ─────────────────────────────────────────
+
+              RX = 970  # right panel left edge
+              RCX = RX + 155  # center x of right panel
+
+              # Date red pill (top right)
+              pill(d, RX, 18, RX+300, 88, RED, outline=DKRED)
+              text_center(d, date, RCX, 53, F_BIG, WHITE)
+
+              # ပတ်သီး label + numbers
+              pill(d, RX, 100, RX+300, 145, DKRED+"CC", r=12)
+              text_center(d, f"ပတ်သီး  {PAT}", RCX, 122, F_SMALL, YELLOW)
+
+              # မိန်း purple circle label
+              pill(d, RX, 158, RX+130, 230, PURPLE, outline=DKPURPLE)
+              text_center(d, "မိန်း", RX+65, 194, F_MED, WHITE)
+
+              # မိန်း numbers big green
+              pill(d, RX, 242, RX+300, 320, DKGREEN+"EE", outline=GREEN, r=22)
+              text_center(d, MAIN, RCX, 281, F_HUGE, "#00FF66")
+
+              # အရံ purple circle label
+              pill(d, RX, 332, RX+130, 404, PURPLE, outline=DKPURPLE)
+              text_center(d, "အရံ", RX+65, 368, F_MED, WHITE)
+
+              # အရံ numbers big green
+              pill(d, RX, 416, RX+300, 494, DKGREEN+"EE", outline=GREEN, r=22)
+              text_center(d, ALT, RCX, 455, F_HUGE, "#00FF66")
+
+              return img
+
+          BG = build_bg()
+
+          # ── ADB capture thread ───────────────────────────────────────
+          last_screen = None
+          lock = threading.Lock()
           running = True
 
-          def capture_loop():
-              """Background thread: adb screencap ဆွဲနေတာ"""
-              global last_frame, running
+          def grab():
+              global last_screen, running
               while running:
                   try:
-                      result = subprocess.run(
-                          ['adb', 'exec-out', 'screencap', '-p'],
-                          capture_output=True,
-                          timeout=10
-                      )
-                      if result.returncode == 0 and len(result.stdout) > 1000:
-                          with frame_lock:
-                              last_frame = result.stdout
-                  except Exception as e:
-                      sys.stderr.write(f"Capture error: {e}\n")
-                      time.sleep(0.5)
+                      r = subprocess.run(
+                          ["adb","exec-out","screencap","-p"],
+                          capture_output=True, timeout=10)
+                      if r.returncode==0 and len(r.stdout)>1000:
+                          with lock: last_screen = r.stdout
+                  except: time.sleep(0.3)
 
-          # Background thread စတင်
-          t = threading.Thread(target=capture_loop, daemon=True)
-          t.start()
+          threading.Thread(target=grab, daemon=True).start()
 
-          # ပထမ frame ရောက်အောင် စောင့်
-          sys.stderr.write("Waiting for first frame...\n")
+          # Wait for first frame
+          sys.stderr.write("Waiting for screen...\n")
           for _ in range(60):
-              with frame_lock:
-                  if last_frame:
-                      break
+              with lock:
+                  if last_screen: break
               time.sleep(0.5)
+          if not last_screen:
+              sys.stderr.write("No screen!\n"); sys.exit(1)
+          sys.stderr.write("Compositing started!\n")
 
-          if not last_frame:
-              sys.stderr.write("ERROR: No frame received!\n")
-              sys.exit(1)
+          # ── Phone frame position (center) ─────────────────────────
+          PHONE_X, PHONE_Y = 340, 20   # top-left of phone area
+          PHONE_W, PHONE_H = 600, 680  # phone display area
 
-          sys.stderr.write("✅ Streaming started!\n")
-
-          # stdout ကို ffmpeg stdin ထဲ pipe လုပ်မယ်
-          # 30fps နှုန်းနဲ့ frame တွေ ပို့တာ
-          # adb နှေးရင် နောက်ဆုံး frame ထပ်ပို့
-          frame_count = 0
+          # ── Main loop ─────────────────────────────────────────────
           out = sys.stdout.buffer
+          frame_n = 0
+
           try:
               while True:
-                  start = time.time()
-                  with frame_lock:
-                      frame = last_frame
-                  if frame:
-                      out.write(frame)
-                      out.flush()
-                      frame_count += 1
-                      if frame_count % 150 == 0:  # 5 sec တိုင်း log
-                          sys.stderr.write(f"📸 Frames sent: {frame_count}\n")
-                  elapsed = time.time() - start
-                  sleep_time = FRAME_INTERVAL - elapsed
-                  if sleep_time > 0:
-                      time.sleep(sleep_time)
+                  t0 = time.time()
+                  frame_n += 1
+
+                  # 1. Copy static BG
+                  frame = BG.copy()
+                  d2 = ImageDraw.Draw(frame)
+
+                  # 2. Dynamic clock (updates every frame)
+                  t = mmt_now()
+                  clock_str = t.strftime("%H:%M:%S")
+                  text_shadow(d2, clock_str, 45, 108, F_BIG, BLACK, "#555555", 2)
+
+                  # 3. Paste phone screen
+                  with lock: raw = last_screen
+                  try:
+                      phone_img = Image.open(io.BytesIO(raw)).convert("RGB")
+                      # Scale to fit phone area
+                      phone_img.thumbnail((PHONE_W, PHONE_H), Image.LANCZOS)
+                      pw, ph = phone_img.size
+                      # Center inside phone area
+                      px = PHONE_X + (PHONE_W - pw)//2
+                      py = PHONE_Y + (PHONE_H - ph)//2
+                      # White bg for phone
+                      d2.rounded_rectangle([PHONE_X-4, PHONE_Y-4,
+                                            PHONE_X+PHONE_W+4, PHONE_Y+PHONE_H+4],
+                                           radius=20, fill=WHITE, outline="#CCCCCC", width=2)
+                      frame.paste(phone_img, (px, py))
+                  except: pass
+
+                  # 4. Encode to PNG → stdout
+                  buf = io.BytesIO()
+                  frame.save(buf, format="PNG", optimize=False)
+                  out.write(buf.getvalue())
+                  out.flush()
+
+                  if frame_n % 150 == 0:
+                      sys.stderr.write(f"frames={frame_n} clock={clock_str}\n")
+
+                  # 5. Rate limit to 30fps
+                  dt = INTERVAL - (time.time() - t0)
+                  if dt > 0: time.sleep(dt)
+
           except BrokenPipeError:
-              sys.stderr.write("ffmpeg pipe closed.\n")
+              sys.stderr.write("Done.\n")
           finally:
               running = False
           PYEOF
-          chmod +x /tmp/capture.py
-          echo "✅ Python bridge created!"
+          chmod +x /tmp/compositor.py
+          echo "✅ Compositor ready!"
 
       - name: Create Stream Script
         run: |
           cat > /tmp/stream.sh << 'SCRIPT'
           #!/bin/bash
-          echo "=== ✅ Emulator Ready! ==="
+          echo "=== Emulator Ready ==="
 
-          adb root || true
-          sleep 3
-
-          # Ad Block
-          adb shell settings put global private_dns_mode hostname || true
+          adb root || true; sleep 3
+          adb shell settings put global private_dns_mode hostname   || true
           adb shell settings put global private_dns_specifier dns.adguard.com || true
-          echo "✅ Ads blocked!"
 
-          # APK Install
-          adb install -r /tmp/app.apk
-          echo "✅ APK Installed!"
+          adb install -r /tmp/app.apk; echo "APK installed"
 
-          # Screen Unlock
-          adb shell input keyevent 82
-          sleep 1
-          adb shell input keyevent 4
-          sleep 1
-          adb shell input keyevent 82
-          sleep 2
-          echo "✅ Screen Unlocked!"
+          adb shell input keyevent 82; sleep 1
+          adb shell input keyevent 4;  sleep 1
+          adb shell input keyevent 82; sleep 2
 
-          # App Launch
-          echo "=== 🚀 Launching App ==="
           adb shell am start -n "network.kalock.myanmar2d/.MainActivity"
           sleep 15
-          echo "✅ App Launched!"
 
-          # Dialog dismiss
-          sleep 3
-          adb shell input keyevent 66
-          sleep 1
-          adb shell input tap 512 328
-          sleep 2
-          adb shell input keyevent 66
-          sleep 1
-          echo "✅ Dialog dismissed!"
+          sleep 3; adb shell input keyevent 66
+          sleep 1; adb shell input tap 512 328
+          sleep 2; adb shell input keyevent 66; sleep 1
+          echo "Dialog dismissed"
 
-          echo "=== 🎥 Starting Stream via Python bridge ==="
-
-          # Python capture → ffmpeg stdin pipe
-          # python3 /tmp/capture.py  : 30fps নিয়মিত PNG frames → stdout
-          # ffmpeg -i pipe:0          : stdin কেকে video source হিসেবে পড়ে
-          python3 /tmp/capture.py 2>/tmp/capture.log | \
+          echo "=== Starting stream ==="
+          python3 /tmp/compositor.py 2>/tmp/comp.log | \
           ffmpeg \
             -re \
-            -f image2pipe \
-            -framerate 30 \
-            -vcodec png \
-            -i pipe:0 \
-            -f lavfi \
-            -i anullsrc=channel_layout=stereo:sample_rate=44100 \
-            -vf "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2" \
-            -c:v libx264 \
-            -preset veryfast \
-            -tune zerolatency \
-            -pix_fmt yuv420p \
-            -r 30 \
-            -g 60 \
-            -b:v 3000k \
-            -maxrate 3500k \
-            -bufsize 14000k \
-            -c:a aac \
-            -ar 44100 \
-            -b:a 128k \
-            -f flv \
-            "rtmp://a.rtmp.youtube.com/live2/$YOUTUBE_STREAM_KEY"
+            -f image2pipe -framerate 30 -vcodec png -i pipe:0 \
+            -f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 \
+            -c:v libx264 -preset veryfast -tune zerolatency \
+            -pix_fmt yuv420p -r 30 -g 60 \
+            -b:v 4000k -maxrate 4500k -bufsize 14000k \
+            -c:a aac -ar 44100 -b:a 128k \
+            -f flv "rtmp://a.rtmp.youtube.com/live2/$YOUTUBE_STREAM_KEY"
 
-          echo "=== Capture Log ==="
-          cat /tmp/capture.log
-          echo "✅ Stream ended!"
+          cat /tmp/comp.log
+          echo "Stream ended!"
           SCRIPT
           chmod +x /tmp/stream.sh
-          echo "✅ Stream script created!"
 
       - name: Run Emulator and Stream
         uses: reactivecircus/android-emulator-runner@v2
@@ -215,18 +353,12 @@ jobs:
           force-avd-creation: true
           disable-animations: true
           emulator-options: >-
-            -no-audio
-            -no-boot-anim
-            -no-snapshot
-            -gpu swiftshader_indirect
-            -memory 4096
-            -no-window
+            -no-audio -no-boot-anim -no-snapshot
+            -gpu swiftshader_indirect -memory 4096 -no-window
           script: bash /tmp/stream.sh
 
-      - name: Show Logs on Failure
+      - name: Logs on Failure
         if: failure()
         run: |
-          echo "=== Capture Log ==="
-          cat /tmp/capture.log 2>/dev/null || echo "No capture log"
-          echo "=== Emulator Log ==="
-          cat /tmp/emulator.log 2>/dev/null || echo "No emulator log"
+          cat /tmp/comp.log 2>/dev/null || echo "no compositor log"
+          cat /tmp/emulator.log 2>/dev/null || echo "no emulator log"
