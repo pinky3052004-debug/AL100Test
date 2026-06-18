@@ -33,50 +33,24 @@ jobs:
           wget -q -O /tmp/app.apk "https://github.com/pinky3052004-debug/AL100Test/releases/download/v1.0.0/my_app.apk"
           echo "✅ APK: $(du -sh /tmp/app.apk)"
 
-      # ─────────────────────────────────────────────────────────────────
-      # Main Python script: capture + compose + stream
-      # ─────────────────────────────────────────────────────────────────
       - name: Create Compositor Script
         run: |
           cat > /tmp/compositor.py << 'PYEOF'
           #!/usr/bin/env python3
-          """
-          compositor.py
-          Captures adb screen, composes a 1280x720 frame with beautiful overlay,
-          and pumps PNG frames into ffmpeg via stdout.
-
-          Layout (inspired by reference screenshot):
-          ┌──────────────────────────────────────────────────────────────┐
-          │  YELLOW BG (#FFD700)                                         │
-          │                                                              │
-          │  LEFT:                         RIGHT:                        │
-          │  [Red pill] 12:01 PM           [Red pill] 11-06-2026        │
-          │  [Clock box] 09:25:41          [Purple] မိန်း               │
-          │  [Blue box] ကြာသပတေး နေ့       [Green big] 72-78-44        │
-          │             နေ့နံ              [Purple] အရံ                 │
-          │  [Red box]  ထွက်ကြဟန်း        [Green big] 49-99-95        │
-          │  [Bottom]  ဟောတိပ် 2-8-6      ပတ်သီး 7-4-9               │
-          │                                                              │
-          │               [ PHONE SCREEN (center) ]                     │
-          └──────────────────────────────────────────────────────────────┘
-          """
-
           import subprocess, sys, time, threading, io, random, datetime, os
-          from PIL import Image, ImageDraw, ImageFont, ImageFilter
+          from PIL import Image, ImageDraw, ImageFont
 
-          # ── Config ──────────────────────────────────────────────────
           W, H = 1280, 720
-          FPS  = 30
+          FPS  = 20
           INTERVAL = 1.0 / FPS
 
-          # Myanmar time UTC+6:30
           def mmt_now():
               return datetime.datetime.utcnow() + datetime.timedelta(hours=6, minutes=30)
 
           now   = mmt_now()
           hour  = now.hour
-          day   = now.strftime("%A")       # Wednesday
-          date  = now.strftime("%d-%m-%Y") # 17-06-2026
+          day   = now.strftime("%A")
+          date  = now.strftime("%d-%m-%Y")
 
           if hour < 12:
               SESS_TIME  = "12:01 PM"
@@ -94,9 +68,9 @@ jobs:
 
           sys.stderr.write(f"Session: {SESS_TIME} | {SESS_LABEL.strip()} | {date}\n")
           sys.stderr.write(f"PAT={PAT}  MAIN={MAIN}  ALT={ALT}\n")
+          sys.stderr.flush()
 
-          # ── Fonts ────────────────────────────────────────────────────
-          def load_font(size, bold=True):
+          def load_font(size):
               paths = [
                   "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
                   "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
@@ -106,13 +80,11 @@ jobs:
                       return ImageFont.truetype(p, size)
               return ImageFont.load_default()
 
-          F_HUGE   = load_font(72)
-          F_BIG    = load_font(52)
-          F_MED    = load_font(36)
-          F_SMALL  = load_font(24)
-          F_TINY   = load_font(18)
+          F_HUGE  = load_font(72)
+          F_BIG   = load_font(52)
+          F_MED   = load_font(36)
+          F_SMALL = load_font(24)
 
-          # ── Colors ───────────────────────────────────────────────────
           YELLOW  = "#FFD700"
           RED     = "#CC0000"
           DKRED   = "#8B0000"
@@ -126,7 +98,6 @@ jobs:
           BLACK   = "#111111"
           AMBER   = "#E65C00"
 
-          # ── Helper: draw rounded rectangle ──────────────────────────
           def pill(draw, x1, y1, x2, y2, fill, outline=None, r=18):
               draw.rounded_rectangle([x1,y1,x2,y2], radius=r, fill=fill,
                                      outline=outline, width=3 if outline else 0)
@@ -140,22 +111,15 @@ jobs:
               draw.text((x+off, y+off), txt, font=font, fill=shadow+"99")
               draw.text((x, y), txt, font=font, fill=color)
 
-          # ── Build static background (generated once) ─────────────────
           def build_bg():
               img = Image.new("RGB", (W, H), YELLOW)
               d   = ImageDraw.Draw(img)
 
-              # ── LEFT SIDE ──────────────────────────────────────────
-
-              # Session time red pill (top left)
               pill(d, 22, 18, 308, 88, RED, outline=DKRED)
               text_center(d, SESS_TIME, 165, 53, F_BIG, WHITE)
 
-              # Clock box (white border)
               pill(d, 22, 100, 308, 168, WHITE, outline="#AAAAAA", r=14)
-              # clock text drawn dynamically
 
-              # Day label blue pill
               pill(d, 22, 180, 308, 260, BLUE, outline=DKBLUE)
               lines = SESS_LABEL.strip().split("\n")
               if len(lines) == 2:
@@ -164,43 +128,33 @@ jobs:
               else:
                   text_center(d, lines[0], 165, 220, F_MED, WHITE)
 
-              # Decorative red box (ထွက်ကြဟန်း style)
               pill(d, 22, 272, 308, 352, RED, outline=DKRED)
               text_center(d, "ထွက်ကြဟန်း", 165, 312, F_MED, WHITE)
 
-              # Bottom left: ဟောတိပ် + PAT numbers
               pill(d, 22, 364, 308, 420, AMBER, outline="#8B4500", r=12)
               text_center(d, "ဟောတိပ်", 100, 392, F_SMALL, WHITE)
-              # PAT pill
+
               pill(d, 22, 430, 308, 500, BLACK+"CC", r=12)
               text_center(d, PAT, 165, 465, F_BIG, YELLOW)
 
-              # ── RIGHT SIDE ─────────────────────────────────────────
+              RX  = 970
+              RCX = RX + 155
 
-              RX = 970  # right panel left edge
-              RCX = RX + 155  # center x of right panel
-
-              # Date red pill (top right)
               pill(d, RX, 18, RX+300, 88, RED, outline=DKRED)
               text_center(d, date, RCX, 53, F_BIG, WHITE)
 
-              # ပတ်သီး label + numbers
               pill(d, RX, 100, RX+300, 145, DKRED+"CC", r=12)
               text_center(d, f"ပတ်သီး  {PAT}", RCX, 122, F_SMALL, YELLOW)
 
-              # မိန်း purple circle label
               pill(d, RX, 158, RX+130, 230, PURPLE, outline=DKPURPLE)
               text_center(d, "မိန်း", RX+65, 194, F_MED, WHITE)
 
-              # မိန်း numbers big green
               pill(d, RX, 242, RX+300, 320, DKGREEN+"EE", outline=GREEN, r=22)
               text_center(d, MAIN, RCX, 281, F_HUGE, "#00FF66")
 
-              # အရံ purple circle label
               pill(d, RX, 332, RX+130, 404, PURPLE, outline=DKPURPLE)
               text_center(d, "အရံ", RX+65, 368, F_MED, WHITE)
 
-              # အရံ numbers big green
               pill(d, RX, 416, RX+300, 494, DKGREEN+"EE", outline=GREEN, r=22)
               text_center(d, ALT, RCX, 455, F_HUGE, "#00FF66")
 
@@ -208,7 +162,6 @@ jobs:
 
           BG = build_bg()
 
-          # ── ADB capture thread ───────────────────────────────────────
           last_screen = None
           lock = threading.Lock()
           running = True
@@ -219,28 +172,34 @@ jobs:
                   try:
                       r = subprocess.run(
                           ["adb","exec-out","screencap","-p"],
-                          capture_output=True, timeout=10)
-                      if r.returncode==0 and len(r.stdout)>1000:
-                          with lock: last_screen = r.stdout
-                  except: time.sleep(0.3)
+                          capture_output=True, timeout=15)
+                      if r.returncode == 0 and len(r.stdout) > 1000:
+                          with lock:
+                              last_screen = r.stdout
+                  except Exception as e:
+                      sys.stderr.write(f"grab err: {e}\n")
+                  time.sleep(0.5)
 
           threading.Thread(target=grab, daemon=True).start()
 
-          # Wait for first frame
           sys.stderr.write("Waiting for screen...\n")
-          for _ in range(60):
+          sys.stderr.flush()
+          for _ in range(120):
               with lock:
                   if last_screen: break
               time.sleep(0.5)
+
           if not last_screen:
-              sys.stderr.write("No screen!\n"); sys.exit(1)
-          sys.stderr.write("Compositing started!\n")
+              sys.stderr.write("No screen after 60s!\n")
+              sys.stderr.flush()
+              sys.exit(1)
 
-          # ── Phone frame position (center) ─────────────────────────
-          PHONE_X, PHONE_Y = 340, 20   # top-left of phone area
-          PHONE_W, PHONE_H = 600, 680  # phone display area
+          sys.stderr.write("Compositing started! (rawvideo mode)\n")
+          sys.stderr.flush()
 
-          # ── Main loop ─────────────────────────────────────────────
+          PHONE_X, PHONE_Y = 340, 20
+          PHONE_W, PHONE_H = 600, 680
+
           out = sys.stdout.buffer
           frame_n = 0
 
@@ -249,47 +208,41 @@ jobs:
                   t0 = time.time()
                   frame_n += 1
 
-                  # 1. Copy static BG
                   frame = BG.copy()
                   d2 = ImageDraw.Draw(frame)
 
-                  # 2. Dynamic clock (updates every frame)
                   t = mmt_now()
                   clock_str = t.strftime("%H:%M:%S")
                   text_shadow(d2, clock_str, 45, 108, F_BIG, BLACK, "#555555", 2)
 
-                  # 3. Paste phone screen
-                  with lock: raw = last_screen
+                  with lock:
+                      raw = last_screen
                   try:
                       phone_img = Image.open(io.BytesIO(raw)).convert("RGB")
-                      # Scale to fit phone area
                       phone_img.thumbnail((PHONE_W, PHONE_H), Image.LANCZOS)
                       pw, ph = phone_img.size
-                      # Center inside phone area
-                      px = PHONE_X + (PHONE_W - pw)//2
-                      py = PHONE_Y + (PHONE_H - ph)//2
-                      # White bg for phone
-                      d2.rounded_rectangle([PHONE_X-4, PHONE_Y-4,
-                                            PHONE_X+PHONE_W+4, PHONE_Y+PHONE_H+4],
-                                           radius=20, fill=WHITE, outline="#CCCCCC", width=2)
+                      px = PHONE_X + (PHONE_W - pw) // 2
+                      py = PHONE_Y + (PHONE_H - ph) // 2
+                      d2.rounded_rectangle(
+                          [PHONE_X-4, PHONE_Y-4, PHONE_X+PHONE_W+4, PHONE_Y+PHONE_H+4],
+                          radius=20, fill=WHITE, outline="#CCCCCC", width=2)
                       frame.paste(phone_img, (px, py))
-                  except: pass
+                  except Exception as e:
+                      sys.stderr.write(f"paste err: {e}\n")
 
-                  # 4. Encode to PNG → stdout
-                  buf = io.BytesIO()
-                  frame.save(buf, format="PNG", optimize=False)
-                  out.write(buf.getvalue())
+                  out.write(frame.tobytes())
                   out.flush()
 
-                  if frame_n % 150 == 0:
+                  if frame_n % 100 == 0:
                       sys.stderr.write(f"frames={frame_n} clock={clock_str}\n")
+                      sys.stderr.flush()
 
-                  # 5. Rate limit to 30fps
                   dt = INTERVAL - (time.time() - t0)
-                  if dt > 0: time.sleep(dt)
+                  if dt > 0:
+                      time.sleep(dt)
 
           except BrokenPipeError:
-              sys.stderr.write("Done.\n")
+              sys.stderr.write("Done (pipe closed).\n")
           finally:
               running = False
           PYEOF
@@ -300,36 +253,54 @@ jobs:
         run: |
           cat > /tmp/stream.sh << 'SCRIPT'
           #!/bin/bash
+          set -e
           echo "=== Emulator Ready ==="
 
-          adb root || true; sleep 3
+          adb root || true
+          sleep 5
+
           adb shell settings put global private_dns_mode hostname   || true
           adb shell settings put global private_dns_specifier dns.adguard.com || true
 
-          adb install -r /tmp/app.apk; echo "APK installed"
+          adb install -r /tmp/app.apk
+          echo "APK installed"
 
           adb shell input keyevent 82; sleep 1
           adb shell input keyevent 4;  sleep 1
           adb shell input keyevent 82; sleep 2
 
           adb shell am start -n "network.kalock.myanmar2d/.MainActivity"
-          sleep 15
+          sleep 20
 
-          sleep 3; adb shell input keyevent 66
-          sleep 1; adb shell input tap 512 328
-          sleep 2; adb shell input keyevent 66; sleep 1
+          sleep 3
+          adb shell input keyevent 66; sleep 1
+          adb shell input tap 512 328;     sleep 2
+          adb shell input keyevent 66;     sleep 1
           echo "Dialog dismissed"
 
           echo "=== Starting stream ==="
+
           python3 /tmp/compositor.py 2>/tmp/comp.log | \
           ffmpeg \
             -re \
-            -f image2pipe -framerate 30 -vcodec png -i pipe:0 \
+            -f rawvideo \
+            -pixel_format rgb24 \
+            -video_size 1280x720 \
+            -framerate 20 \
+            -i pipe:0 \
             -f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 \
-            -c:v libx264 -preset veryfast -tune zerolatency \
-            -pix_fmt yuv420p -r 30 -g 60 \
-            -b:v 4000k -maxrate 4500k -bufsize 14000k \
-            -c:a aac -ar 44100 -b:a 128k \
+            -c:v libx264 \
+            -preset ultrafast \
+            -tune zerolatency \
+            -pix_fmt yuv420p \
+            -r 20 \
+            -g 40 \
+            -b:v 2500k \
+            -maxrate 3000k \
+            -bufsize 6000k \
+            -c:a aac \
+            -ar 44100 \
+            -b:a 128k \
             -f flv "rtmp://a.rtmp.youtube.com/live2/$YOUTUBE_STREAM_KEY"
 
           cat /tmp/comp.log
@@ -352,6 +323,7 @@ jobs:
           cores: 2
           force-avd-creation: true
           disable-animations: true
+          emulator-boot-timeout: 600
           emulator-options: >-
             -no-audio -no-boot-anim -no-snapshot
             -gpu swiftshader_indirect -memory 4096 -no-window
@@ -360,5 +332,7 @@ jobs:
       - name: Logs on Failure
         if: failure()
         run: |
+          echo "=== Compositor Log ==="
           cat /tmp/comp.log 2>/dev/null || echo "no compositor log"
+          echo "=== Emulator Log ==="
           cat /tmp/emulator.log 2>/dev/null || echo "no emulator log"
