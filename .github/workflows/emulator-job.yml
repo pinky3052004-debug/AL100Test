@@ -25,7 +25,9 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y ffmpeg python3 python3-pip fonts-dejavu-core
+          sudo apt-get install -y fonts-noto fonts-noto-cjk || true
           pip3 install Pillow --break-system-packages
+          fc-cache -fv || true
           echo "✅ Done!"
 
       - name: Download APK
@@ -37,7 +39,7 @@ jobs:
         run: |
           cat > /tmp/compositor.py << 'PYEOF'
           #!/usr/bin/env python3
-          import subprocess, sys, time, threading, io, random, datetime, os
+          import subprocess, sys, time, threading, io, random, datetime, os, math
           from PIL import Image, ImageDraw, ImageFont
 
           W, H = 1280, 720
@@ -49,15 +51,26 @@ jobs:
 
           now   = mmt_now()
           hour  = now.hour
-          day   = now.strftime("%A")
           date  = now.strftime("%d-%m-%Y")
+
+          DAYS_MY = {
+              "Monday":    "တနင်္လာ",
+              "Tuesday":   "အင်္ဂါ",
+              "Wednesday": "ဗုဒ္ဓဟူး",
+              "Thursday":  "ကြာသပတေး",
+              "Friday":    "သောကြာ",
+              "Saturday":  "စနေ",
+              "Sunday":    "တနင်္ဂနွေ",
+          }
+          day_en = now.strftime("%A")
+          day_my = DAYS_MY.get(day_en, day_en)
 
           if hour < 12:
               SESS_TIME  = "12:01 PM"
-              SESS_LABEL = f"{day}\nMorning Live"
+              SESS_MY    = "မနက်ပိုင်း"
           else:
               SESS_TIME  = "4:30 PM"
-              SESS_LABEL = f"{day}\nEvening Live"
+              SESS_MY    = "ညနေပိုင်း"
 
           def rnd3():
               return f"{random.randint(0,99):02d}-{random.randint(0,99):02d}-{random.randint(0,99):02d}"
@@ -66,97 +79,142 @@ jobs:
           MAIN = rnd3()
           ALT  = rnd3()
 
-          sys.stderr.write(f"Session: {SESS_TIME} | {SESS_LABEL.strip()} | {date}\n")
-          sys.stderr.write(f"PAT={PAT}  MAIN={MAIN}  ALT={ALT}\n")
+          sys.stderr.write(f"[{date}] {SESS_TIME} | PAT={PAT} MAIN={MAIN} ALT={ALT}\n")
           sys.stderr.flush()
 
-          def load_font(size):
-              paths = [
-                  "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-                  "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-              ]
+          MY_FONT_PATHS = [
+              "/usr/share/fonts/truetype/noto/NotoSansMyanmar-Bold.ttf",
+              "/usr/share/fonts/truetype/noto/NotoSansMyanmar-Regular.ttf",
+              "/usr/share/fonts/opentype/noto/NotoSansMyanmar-Bold.otf",
+              "/usr/share/fonts/opentype/noto/NotoSansMyanmar-Regular.otf",
+              "/usr/share/fonts/truetype/noto/NotoSerifMyanmar-Bold.ttf",
+              "/usr/share/fonts/truetype/noto/NotoSerifMyanmar-Regular.ttf",
+          ]
+          EN_FONT_PATHS = [
+              "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+              "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+          ]
+
+          def find_font(paths):
               for p in paths:
                   if os.path.exists(p):
-                      return ImageFont.truetype(p, size)
+                      return p
+              return None
+
+          MY_PATH = find_font(MY_FONT_PATHS)
+          EN_PATH = find_font(EN_FONT_PATHS)
+          sys.stderr.write(f"Myanmar font: {MY_PATH}\n")
+          sys.stderr.write(f"English font: {EN_PATH}\n")
+          sys.stderr.flush()
+
+          def load_font(size, myanmar=False):
+              path = MY_PATH if (myanmar and MY_PATH) else EN_PATH
+              if path:
+                  try:
+                      return ImageFont.truetype(path, size)
+                  except:
+                      pass
               return ImageFont.load_default()
 
-          F_HUGE  = load_font(72)
-          F_BIG   = load_font(52)
-          F_MED   = load_font(36)
-          F_SMALL = load_font(24)
+          F_CLOCK  = load_font(54)
+          F_NUM    = load_font(68)
+          F_DATE   = load_font(44)
+          F_SESS   = load_font(40)
+          F_LABEL  = load_font(28, myanmar=True)
+          F_DAY    = load_font(30, myanmar=True)
+          F_SUB    = load_font(32)
+          F_SUB_SM = load_font(22)
+          F_TINY   = load_font(20, myanmar=True)
 
-          YELLOW  = "#FFD700"
-          RED     = "#CC0000"
-          DKRED   = "#8B0000"
-          GREEN   = "#00AA44"
-          DKGREEN = "#006622"
-          PURPLE  = "#6A0DAD"
-          DKPURPLE= "#3D007A"
-          BLUE    = "#1565C0"
-          DKBLUE  = "#0D3B7A"
-          WHITE   = "#FFFFFF"
-          BLACK   = "#111111"
-          AMBER   = "#E65C00"
+          YELLOW   = (255, 215,   0)
+          RED      = (204,   0,   0)
+          DKRED    = (139,   0,   0)
+          GREEN    = (  0, 180,  60)
+          DKGREEN  = (  0,  90,  30)
+          LTGREEN  = (  0, 255,  80)
+          PURPLE   = (106,  13, 173)
+          DKPURPLE = ( 61,   0, 122)
+          BLUE     = ( 21, 101, 192)
+          DKBLUE   = ( 13,  59, 122)
+          WHITE    = (255, 255, 255)
+          BLACK    = ( 17,  17,  17)
+          AMBER    = (230,  92,   0)
+          DKAMBER  = (139,  69,   0)
+          GOLD     = (255, 200,   0)
+          CHARCOAL = ( 30,  30,  30)
 
-          def pill(draw, x1, y1, x2, y2, fill, outline=None, r=18):
-              draw.rounded_rectangle([x1,y1,x2,y2], radius=r, fill=fill,
-                                     outline=outline, width=3 if outline else 0)
+          def pill(draw, x1, y1, x2, y2, fill, outline=None, r=16, width=3):
+              draw.rounded_rectangle([x1,y1,x2,y2], radius=r,
+                                     fill=fill, outline=outline,
+                                     width=width if outline else 0)
 
-          def text_center(draw, txt, cx, cy, font, color):
+          def text_c(draw, txt, cx, cy, font, color, stroke=0, stroke_color=BLACK):
               bbox = draw.textbbox((0,0), txt, font=font)
               tw = bbox[2]-bbox[0]; th = bbox[3]-bbox[1]
-              draw.text((cx-tw//2, cy-th//2), txt, font=font, fill=color)
+              x = cx - tw//2; y = cy - th//2
+              if stroke:
+                  draw.text((x,y), txt, font=font,
+                            fill=stroke_color, stroke_width=stroke, stroke_fill=stroke_color)
+              draw.text((x,y), txt, font=font, fill=color)
 
-          def text_shadow(draw, txt, x, y, font, color, shadow="#000000", off=3):
-              draw.text((x+off, y+off), txt, font=font, fill=shadow+"99")
-              draw.text((x, y), txt, font=font, fill=color)
+          PHONE_X, PHONE_Y = 330, 10
+          PHONE_W, PHONE_H = 620, 700
+
+          LX1, LX2 = 8, 320
+          LC = (LX1+LX2)//2
+          RX1, RX2 = 960, 1272
+          RC = (RX1+RX2)//2
 
           def build_bg():
               img = Image.new("RGB", (W, H), YELLOW)
               d   = ImageDraw.Draw(img)
 
-              pill(d, 22, 18, 308, 88, RED, outline=DKRED)
-              text_center(d, SESS_TIME, 165, 53, F_BIG, WHITE)
+              for i in range(8):
+                  d.rectangle([0, i, W, i+1], fill=(255-i*10, 200-i*5, 0))
 
-              pill(d, 22, 100, 308, 168, WHITE, outline="#AAAAAA", r=14)
+              # LEFT
+              pill(d, LX1, 8, LX2, 72, RED, outline=DKRED, r=18)
+              text_c(d, SESS_TIME, LC, 40, F_SESS, WHITE, stroke=1)
 
-              pill(d, 22, 180, 308, 260, BLUE, outline=DKBLUE)
-              lines = SESS_LABEL.strip().split("\n")
-              if len(lines) == 2:
-                  text_center(d, lines[0], 165, 205, F_SMALL, WHITE)
-                  text_center(d, lines[1], 165, 238, F_SMALL, WHITE)
-              else:
-                  text_center(d, lines[0], 165, 220, F_MED, WHITE)
+              pill(d, LX1, 78, LX2, 138, WHITE, outline=(180,180,180), r=12)
 
-              pill(d, 22, 272, 308, 352, RED, outline=DKRED)
-              text_center(d, "ထွက်ကြဟန်း", 165, 312, F_MED, WHITE)
+              pill(d, LX1, 144, LX2, 224, BLUE, outline=DKBLUE, r=16)
+              text_c(d, day_my, LC, 168, F_DAY, WHITE, stroke=1)
+              text_c(d, SESS_MY, LC, 206, F_TINY, (200,230,255), stroke=0)
 
-              pill(d, 22, 364, 308, 420, AMBER, outline="#8B4500", r=12)
-              text_center(d, "ဟောတိပ်", 100, 392, F_SMALL, WHITE)
+              pill(d, LX1, 230, LX2, 298, RED, outline=DKRED, r=14)
+              text_c(d, "ထွက်ကြဟန်း", LC, 264, F_LABEL, WHITE, stroke=1)
 
-              pill(d, 22, 430, 308, 500, BLACK+"CC", r=12)
-              text_center(d, PAT, 165, 465, F_BIG, YELLOW)
+              pill(d, LX1, 304, LX2, 356, AMBER, outline=DKAMBER, r=12)
+              text_c(d, "ဟောတိပ်", LC, 330, F_TINY, WHITE, stroke=1)
 
-              RX  = 970
-              RCX = RX + 155
+              pill(d, LX1, 362, LX2, 440, CHARCOAL, outline=GOLD, r=16, width=3)
+              text_c(d, PAT, LC, 401, F_NUM, GOLD, stroke=2, stroke_color=(80,60,0))
 
-              pill(d, RX, 18, RX+300, 88, RED, outline=DKRED)
-              text_center(d, date, RCX, 53, F_BIG, WHITE)
+              pill(d, LX1, 446, LX2, 500, DKRED, outline=RED, r=12)
+              text_c(d, date, LC, 473, F_TINY, WHITE, stroke=1)
 
-              pill(d, RX, 100, RX+300, 145, DKRED+"CC", r=12)
-              text_center(d, f"ပတ်သီး  {PAT}", RCX, 122, F_SMALL, YELLOW)
+              # RIGHT
+              pill(d, RX1, 8, RX2, 72, RED, outline=DKRED, r=18)
+              text_c(d, date, RC, 40, F_DATE, WHITE, stroke=1)
 
-              pill(d, RX, 158, RX+130, 230, PURPLE, outline=DKPURPLE)
-              text_center(d, "မိန်း", RX+65, 194, F_MED, WHITE)
+              pill(d, RX1, 78, RX2, 128, DKRED, outline=RED, r=12)
+              text_c(d, f"ပတ်သီး  {PAT}", RC, 103, F_TINY, GOLD, stroke=1)
 
-              pill(d, RX, 242, RX+300, 320, DKGREEN+"EE", outline=GREEN, r=22)
-              text_center(d, MAIN, RCX, 281, F_HUGE, "#00FF66")
+              pill(d, RX1, 134, RX1+146, 194, PURPLE, outline=DKPURPLE, r=14)
+              text_c(d, "မိန်း", RX1+73, 164, F_LABEL, WHITE, stroke=1)
 
-              pill(d, RX, 332, RX+130, 404, PURPLE, outline=DKPURPLE)
-              text_center(d, "အရံ", RX+65, 368, F_MED, WHITE)
+              pill(d, RX1, 200, RX2, 292, DKGREEN, outline=GREEN, r=20, width=3)
+              text_c(d, MAIN, RC, 246, F_NUM, LTGREEN, stroke=2, stroke_color=(0,40,10))
 
-              pill(d, RX, 416, RX+300, 494, DKGREEN+"EE", outline=GREEN, r=22)
-              text_center(d, ALT, RCX, 455, F_HUGE, "#00FF66")
+              pill(d, RX1, 298, RX1+146, 358, PURPLE, outline=DKPURPLE, r=14)
+              text_c(d, "အရံ", RX1+73, 328, F_LABEL, WHITE, stroke=1)
+
+              pill(d, RX1, 364, RX2, 456, DKGREEN, outline=GREEN, r=20, width=3)
+              text_c(d, ALT, RC, 410, F_NUM, LTGREEN, stroke=2, stroke_color=(0,40,10))
+
+              d.rectangle([0, H-6, W, H], fill=RED)
+              d.rectangle([0, H-12, W, H-6], fill=GOLD)
 
               return img
 
@@ -182,23 +240,26 @@ jobs:
 
           threading.Thread(target=grab, daemon=True).start()
 
-          sys.stderr.write("Waiting for screen...\n")
-          sys.stderr.flush()
+          sys.stderr.write("Waiting for screen...\n"); sys.stderr.flush()
           for _ in range(120):
               with lock:
                   if last_screen: break
               time.sleep(0.5)
 
           if not last_screen:
-              sys.stderr.write("No screen after 60s!\n")
-              sys.stderr.flush()
-              sys.exit(1)
+              sys.stderr.write("No screen!\n"); sys.stderr.flush(); sys.exit(1)
 
-          sys.stderr.write("Compositing started! (rawvideo mode)\n")
-          sys.stderr.flush()
+          sys.stderr.write("Compositing started!\n"); sys.stderr.flush()
 
-          PHONE_X, PHONE_Y = 340, 20
-          PHONE_W, PHONE_H = 600, 680
+          SUB_TEXTS = [
+              "Subscribe လုပ်ပြီး Bell နှိပ်ပါ!",
+              "Like နှင့် Share လုပ်ပေးပါ!",
+              "LIVE ကြည့်ပေးတဲ့အတွက် ကျေးဇူးတင်ပါ",
+              "Notification Bell နှိပ်ပါ!",
+          ]
+          sub_idx  = 0
+          sub_tick = 0
+          SUB_CYCLE = FPS * 4
 
           out = sys.stdout.buffer
           frame_n = 0
@@ -207,16 +268,22 @@ jobs:
               while True:
                   t0 = time.time()
                   frame_n += 1
+                  sub_tick += 1
+                  if sub_tick >= SUB_CYCLE:
+                      sub_tick = 0
+                      sub_idx = (sub_idx + 1) % len(SUB_TEXTS)
 
                   frame = BG.copy()
                   d2 = ImageDraw.Draw(frame)
 
+                  # clock
                   t = mmt_now()
                   clock_str = t.strftime("%H:%M:%S")
-                  text_shadow(d2, clock_str, 45, 108, F_BIG, BLACK, "#555555", 2)
+                  pill(d2, LX1, 78, LX2, 138, WHITE, outline=(180,180,180), r=12)
+                  text_c(d2, clock_str, LC, 108, F_CLOCK, BLACK)
 
-                  with lock:
-                      raw = last_screen
+                  # phone screen
+                  with lock: raw = last_screen
                   try:
                       phone_img = Image.open(io.BytesIO(raw)).convert("RGB")
                       phone_img.thumbnail((PHONE_W, PHONE_H), Image.LANCZOS)
@@ -224,25 +291,47 @@ jobs:
                       px = PHONE_X + (PHONE_W - pw) // 2
                       py = PHONE_Y + (PHONE_H - ph) // 2
                       d2.rounded_rectangle(
-                          [PHONE_X-4, PHONE_Y-4, PHONE_X+PHONE_W+4, PHONE_Y+PHONE_H+4],
-                          radius=20, fill=WHITE, outline="#CCCCCC", width=2)
+                          [PHONE_X-6, PHONE_Y-6, PHONE_X+PHONE_W+6, PHONE_Y+PHONE_H+6],
+                          radius=24, fill=BLACK, outline=GOLD, width=3)
                       frame.paste(phone_img, (px, py))
                   except Exception as e:
                       sys.stderr.write(f"paste err: {e}\n")
+
+                  # subscribe bar
+                  pulse = 0.7 + 0.3 * math.sin(frame_n * 0.15)
+                  r_c = int(220 * pulse)
+                  g_c = int(40  * pulse)
+                  b_c = int(40  * pulse)
+                  pill(d2, 8, 520, W-8, 590, (r_c,g_c,b_c), outline=(255,80,80), r=20, width=3)
+
+                  bell_r = int(18 + 4 * math.sin(frame_n * 0.2))
+                  bx, by = 55, 555
+                  d2.ellipse([bx-bell_r, by-bell_r, bx+bell_r, by+bell_r],
+                             fill=GOLD, outline=WHITE)
+
+                  sub_text = SUB_TEXTS[sub_idx]
+                  alpha_f = min(1.0, sub_tick / 10)
+                  txt_color = (int(255*alpha_f), int(255*alpha_f), int(255*alpha_f))
+                  text_c(d2, sub_text, W//2 + 20, 555, F_SUB, txt_color, stroke=2)
+
+                  pill(d2, W-210, 530, W-18, 582, WHITE, outline=RED, r=16, width=3)
+                  text_c(d2, "SUBSCRIBE", W-114, 556, F_SUB_SM, RED)
+
+                  pill(d2, RX1, 470, RX2, 510, CHARCOAL, outline=GOLD, r=10, width=2)
+                  text_c(d2, "LIVE NOW", RC, 490, F_SUB_SM, WHITE)
 
                   out.write(frame.tobytes())
                   out.flush()
 
                   if frame_n % 100 == 0:
-                      sys.stderr.write(f"frames={frame_n} clock={clock_str}\n")
+                      sys.stderr.write(f"frames={frame_n} t={clock_str}\n")
                       sys.stderr.flush()
 
                   dt = INTERVAL - (time.time() - t0)
-                  if dt > 0:
-                      time.sleep(dt)
+                  if dt > 0: time.sleep(dt)
 
           except BrokenPipeError:
-              sys.stderr.write("Done (pipe closed).\n")
+              sys.stderr.write("Done.\n")
           finally:
               running = False
           PYEOF
@@ -274,8 +363,8 @@ jobs:
 
           sleep 3
           adb shell input keyevent 66; sleep 1
-          adb shell input tap 512 328;     sleep 2
-          adb shell input keyevent 66;     sleep 1
+          adb shell input tap 512 328; sleep 2
+          adb shell input keyevent 66; sleep 1
           echo "Dialog dismissed"
 
           echo "=== Starting stream ==="
