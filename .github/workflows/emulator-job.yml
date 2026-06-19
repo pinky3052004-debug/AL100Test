@@ -122,8 +122,8 @@ jobs:
           F_SESS   = load_font(40)
           F_LABEL  = load_font(28, myanmar=True)
           F_DAY    = load_font(30, myanmar=True)
-          F_SUB    = load_font(32, myanmar=True)
-          F_SUB_SM = load_font(22, myanmar=True)
+          F_SUB    = load_font(32)
+          F_SUB_SM = load_font(22)
           F_TINY   = load_font(20, myanmar=True)
 
           YELLOW   = (255, 215,   0)
@@ -157,16 +157,12 @@ jobs:
                             fill=stroke_color, stroke_width=stroke, stroke_fill=stroke_color)
               draw.text((x,y), txt, font=font, fill=color)
 
-          # ဖုန်း Frame အတွက် တည်နေရာနှင့် အတိုင်းအတာသစ် (1080x2280 အတွက် ကွက်တိညှိထားခြင်း)
-          PHONE_X, PHONE_Y = 470, 15
-          PHONE_W, PHONE_H = 340, 690
-          
-          # LEFT PANEL coordinates (ဖုန်းဘယ်ဘက်ခြမ်း UI အတွက် နေရာချဲ့ပေးထားပါတယ်)
-          LX1, LX2 = 16, 440
+          PHONE_X, PHONE_Y = 330, 10
+          PHONE_W, PHONE_H = 620, 700
+
+          LX1, LX2 = 8, 320
           LC = (LX1+LX2)//2
-          
-          # RIGHT PANEL coordinates (ဖုန်းညာဘက်ခြမ်း UI)
-          RX1, RX2 = 840, 1264
+          RX1, RX2 = 960, 1272
           RC = (RX1+RX2)//2
 
           def build_bg():
@@ -286,33 +282,18 @@ jobs:
                   pill(d2, LX1, 78, LX2, 138, WHITE, outline=(180,180,180), r=12)
                   text_c(d2, clock_str, LC, 108, F_CLOCK, BLACK)
 
-                  # Phone Screen Frame (Modern Border & Shadow Effect)
+                  # phone screen
                   with lock: raw = last_screen
                   try:
                       phone_img = Image.open(io.BytesIO(raw)).convert("RGB")
-                      # 1080x2280 ပုံကို အချိုးအစားမပျက် (Aspect Ratio 1:2.11) အတိုင်း ချုံ့ပေးမည်
                       phone_img.thumbnail((PHONE_W, PHONE_H), Image.LANCZOS)
                       pw, ph = phone_img.size
-                      
-                      # ဖုန်းပုံရိပ်ကို Frame ရဲ့ အလယ်ဗဟိုသို့ ပို့ပေးခြင်း
                       px = PHONE_X + (PHONE_W - pw) // 2
                       py = PHONE_Y + (PHONE_H - ph) // 2
-                      
-                      # ခေတ်မီဆန်းသစ်သော ဖုန်း Outer Container/Frame (အနားလုံး စတိုင်)
-                      # ဖုန်းနောက်ခံ အနက်ရောင် Frame
                       d2.rounded_rectangle(
-                          [px-6, py-6, px+pw+6, py+ph+6],
-                          radius=24, fill=(10, 11, 14), outline=CARD_ACCENT, width=2)
-                      
-                      # ဖုန်း Screen အစစ်ကို Paste လုပ်ခြင်း
+                          [PHONE_X-6, PHONE_Y-6, PHONE_X+PHONE_W+6, PHONE_Y+PHONE_H+6],
+                          radius=24, fill=BLACK, outline=GOLD, width=3)
                       frame.paste(phone_img, (px, py))
-                      
-                      # ဖုန်းမျက်နှာပြင်ပေါ်က အနားလုံးများကို ပိုမိုသေသပ်စေရန် Clip Frame ထပ်အုပ်ပေးခြင်း
-                      # (ဤအပိုင်းသည် Screen ရဲ့ ထောင့်လေးများကို Smooth ဖြစ်စေပါသည်)
-                      d2.rounded_rectangle(
-                          [px, py, px+pw, py+ph],
-                          radius=18, fill=None, outline=(10, 11, 14), width=3)
-                          
                   except Exception as e:
                       sys.stderr.write(f"paste err: {e}\n")
 
