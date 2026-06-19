@@ -288,12 +288,15 @@ jobs:
                       phone_img = Image.open(io.BytesIO(raw)).convert("RGB")
                       phone_img.thumbnail((PHONE_W, PHONE_H), Image.LANCZOS)
                       pw, ph = phone_img.size
-                      px = PHONE_X + (PHONE_W - pw) // 2
-                      py = PHONE_Y + (PHONE_H - ph) // 2
+                      frame_x1 = PHONE_X + (PHONE_W - pw) // 2
+                      frame_y1 = PHONE_Y + (PHONE_H - ph) // 2
+                      frame_x2 = frame_x1 + pw
+                      frame_y2 = frame_y1 + ph
+                  
                       d2.rounded_rectangle(
-                          [PHONE_X-6, PHONE_Y-6, PHONE_X+PHONE_W+6, PHONE_Y+PHONE_H+6],
+                          [frame_x1-6, frame_y1-6, frame_x2+6, frame_y2+6],
                           radius=24, fill=BLACK, outline=GOLD, width=3)
-                      frame.paste(phone_img, (px, py))
+                      frame.paste(phone_img, (frame_x1, frame_y1))
                   except Exception as e:
                       sys.stderr.write(f"paste err: {e}\n")
 
