@@ -299,26 +299,30 @@ jobs:
                       frame.paste(phone_img, (frame_x1, frame_y1))
                   except Exception as e:
                       sys.stderr.write(f"paste err: {e}\n")
-
-                  # subscribe bar
+                      
+                  # Subscribe bar ကို frame ရဲ့ အောက်ခြေအနီးကို ရွှေ့မယ်
+                  SUB_BAR_Y1 = H - 90   # bar အပေါ်စွန်း
+                  SUB_BAR_Y2 = H - 20   # bar အောက်စွန်း
+                  SUB_BAR_MID = (SUB_BAR_Y1 + SUB_BAR_Y2) // 2
+                  
                   pulse = 0.7 + 0.3 * math.sin(frame_n * 0.15)
                   r_c = int(220 * pulse)
                   g_c = int(40  * pulse)
                   b_c = int(40  * pulse)
-                  pill(d2, 8, 520, W-8, 590, (r_c,g_c,b_c), outline=(255,80,80), r=20, width=3)
-
+                  pill(d2, 8, SUB_BAR_Y1, W-8, SUB_BAR_Y2, (r_c,g_c,b_c), outline=(255,80,80), r=20, width=3)
+                  
                   bell_r = int(18 + 4 * math.sin(frame_n * 0.2))
-                  bx, by = 55, 555
+                  bx, by = 55, SUB_BAR_MID
                   d2.ellipse([bx-bell_r, by-bell_r, bx+bell_r, by+bell_r],
                              fill=GOLD, outline=WHITE)
-
+                  
                   sub_text = SUB_TEXTS[sub_idx]
                   alpha_f = min(1.0, sub_tick / 10)
                   txt_color = (int(255*alpha_f), int(255*alpha_f), int(255*alpha_f))
-                  text_c(d2, sub_text, W//2 + 20, 555, F_SUB, txt_color, stroke=2)
-
-                  pill(d2, W-210, 530, W-18, 582, WHITE, outline=RED, r=16, width=3)
-                  text_c(d2, "SUBSCRIBE", W-114, 556, F_SUB_SM, RED)
+                  text_c(d2, sub_text, W//2 + 20, SUB_BAR_MID, F_SUB, txt_color, stroke=2)
+                  
+                  pill(d2, W-210, SUB_BAR_Y1+10, W-18, SUB_BAR_Y2-8, WHITE, outline=RED, r=16, width=3)
+                  text_c(d2, "SUBSCRIBE", W-114, SUB_BAR_MID, F_SUB_SM, RED)
 
                   pill(d2, RX1, 470, RX2, 510, CHARCOAL, outline=GOLD, r=10, width=2)
                   text_c(d2, "LIVE NOW", RC, 490, F_SUB_SM, WHITE)
