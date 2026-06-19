@@ -35,24 +35,24 @@ jobs:
           wget -q -O /tmp/app.apk "https://github.com/pinky3052004-debug/AL100Test/releases/download/v1.0.0/my_app.apk"
           echo "✅ APK: $(du -sh /tmp/app.apk)"
 
-      - name: Create Modern Compositor Script
+      - name: Create Compositor Script
         run: |
           cat > /tmp/compositor.py << 'PYEOF'
           #!/usr/bin/env python3
           import subprocess, sys, time, threading, io, random, datetime, os, math
           from PIL import Image, ImageDraw, ImageFont
-      
+
           W, H = 1280, 720
           FPS  = 20
           INTERVAL = 1.0 / FPS
-      
+
           def mmt_now():
               return datetime.datetime.utcnow() + datetime.timedelta(hours=6, minutes=30)
-      
+
           now   = mmt_now()
           hour  = now.hour
           date  = now.strftime("%d-%m-%Y")
-      
+
           DAYS_MY = {
               "Monday":    "တနင်္လာ",
               "Tuesday":   "အင်္ဂါ",
@@ -64,24 +64,24 @@ jobs:
           }
           day_en = now.strftime("%A")
           day_my = DAYS_MY.get(day_en, day_en)
-      
+
           if hour < 12:
               SESS_TIME  = "12:01 PM"
               SESS_MY    = "မနက်ပိုင်း"
           else:
               SESS_TIME  = "4:30 PM"
               SESS_MY    = "ညနေပိုင်း"
-      
+
           def rnd3():
               return f"{random.randint(0,99):02d}-{random.randint(0,99):02d}-{random.randint(0,99):02d}"
-      
+
           PAT  = rnd3()
           MAIN = rnd3()
           ALT  = rnd3()
-      
+
           sys.stderr.write(f"[{date}] {SESS_TIME} | PAT={PAT} MAIN={MAIN} ALT={ALT}\n")
           sys.stderr.flush()
-      
+
           MY_FONT_PATHS = [
               "/usr/share/fonts/truetype/noto/NotoSansMyanmar-Bold.ttf",
               "/usr/share/fonts/truetype/noto/NotoSansMyanmar-Regular.ttf",
@@ -94,16 +94,19 @@ jobs:
               "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
               "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
           ]
-      
+
           def find_font(paths):
               for p in paths:
                   if os.path.exists(p):
                       return p
               return None
-      
+
           MY_PATH = find_font(MY_FONT_PATHS)
           EN_PATH = find_font(EN_FONT_PATHS)
-      
+          sys.stderr.write(f"Myanmar font: {MY_PATH}\n")
+          sys.stderr.write(f"English font: {EN_PATH}\n")
+          sys.stderr.flush()
+
           def load_font(size, myanmar=False):
               path = MY_PATH if (myanmar and MY_PATH) else EN_PATH
               if path:
@@ -112,113 +115,115 @@ jobs:
                   except:
                       pass
               return ImageFont.load_default()
-      
-          F_CLOCK  = load_font(52)
-          F_NUM    = load_font(64)
-          F_DATE   = load_font(40)
-          F_SESS   = load_font(38)
-          F_LABEL  = load_font(26, myanmar=True)
-          F_DAY    = load_font(28, myanmar=True)
-          F_SUB    = load_font(30, myanmar=True)
-          F_SUB_SM = load_font(20, myanmar=True)
-          F_TINY   = load_font(18, myanmar=True)
-      
-          # MODERN COLOR PALETTE (Premium Dark Theme)
-          BG_DARK      = (18, 20, 26)       # Rich Slate Dark
-          CARD_BG      = (28, 32, 42)       # Card Background
-          CARD_ACCENT  = (40, 46, 59)       # Soft Border
-          TEXT_MAIN    = (255, 255, 255)   # White
-          TEXT_MUTED   = (154, 165, 177)   # Cool Grey
-          
-          # Accent Colors
-          ACCENT_BLUE  = (0, 150, 255)      # Cyber Blue
-          ACCENT_GREEN = (0, 224, 142)      # Emerald Green
-          ACCENT_RED   = (255, 69, 96)       # Modern Coral Red
-          ACCENT_GOLD  = (254, 199, 46)      # Premium Gold
-      
-          def pill(draw, x1, y1, x2, y2, fill, outline=None, r=12, width=1):
+
+          F_CLOCK  = load_font(54)
+          F_NUM    = load_font(68)
+          F_DATE   = load_font(44)
+          F_SESS   = load_font(40)
+          F_LABEL  = load_font(28, myanmar=True)
+          F_DAY    = load_font(30, myanmar=True)
+          F_SUB    = load_font(32)
+          F_SUB_SM = load_font(22)
+          F_TINY   = load_font(20, myanmar=True)
+
+          YELLOW   = (255, 215,   0)
+          RED      = (204,   0,   0)
+          DKRED    = (139,   0,   0)
+          GREEN    = (  0, 180,  60)
+          DKGREEN  = (  0,  90,  30)
+          LTGREEN  = (  0, 255,  80)
+          PURPLE   = (106,  13, 173)
+          DKPURPLE = ( 61,   0, 122)
+          BLUE     = ( 21, 101, 192)
+          DKBLUE   = ( 13,  59, 122)
+          WHITE    = (255, 255, 255)
+          BLACK    = ( 17,  17,  17)
+          AMBER    = (230,  92,   0)
+          DKAMBER  = (139,  69,   0)
+          GOLD     = (255, 200,   0)
+          CHARCOAL = ( 30,  30,  30)
+
+          def pill(draw, x1, y1, x2, y2, fill, outline=None, r=16, width=3):
               draw.rounded_rectangle([x1,y1,x2,y2], radius=r,
                                      fill=fill, outline=outline,
                                      width=width if outline else 0)
-      
-          def text_c(draw, txt, cx, cy, font, color):
+
+          def text_c(draw, txt, cx, cy, font, color, stroke=0, stroke_color=BLACK):
               bbox = draw.textbbox((0,0), txt, font=font)
               tw = bbox[2]-bbox[0]; th = bbox[3]-bbox[1]
               x = cx - tw//2; y = cy - th//2
+              if stroke:
+                  draw.text((x,y), txt, font=font,
+                            fill=stroke_color, stroke_width=stroke, stroke_fill=stroke_color)
               draw.text((x,y), txt, font=font, fill=color)
-      
-          PHONE_X, PHONE_Y = 330, 15
-          PHONE_W, PHONE_H = 620, 690
-      
-          LX1, LX2 = 16, 314
+
+          PHONE_X, PHONE_Y = 330, 10
+          PHONE_W, PHONE_H = 620, 700
+
+          LX1, LX2 = 8, 320
           LC = (LX1+LX2)//2
-          RX1, RX2 = 966, 1264
+          RX1, RX2 = 960, 1272
           RC = (RX1+RX2)//2
-      
+
           def build_bg():
-              # Main background
-              img = Image.new("RGB", (W, H), BG_DARK)
+              img = Image.new("RGB", (W, H), YELLOW)
               d   = ImageDraw.Draw(img)
-      
-              # LEFT PANEL
-              # Session Time Card
-              pill(d, LX1, 15, LX2, 75, ACCENT_BLUE, r=14)
-              text_c(d, SESS_TIME, LC, 45, F_SESS, TEXT_MAIN)
-      
-              # Day & Session Label
-              pill(d, LX1, 90, LX2, 170, CARD_BG, outline=CARD_ACCENT, r=14)
-              text_c(d, day_my, LC, 118, F_DAY, TEXT_MAIN)
-              text_c(d, SESS_MY, LC, 148, F_TINY, TEXT_MUTED)
-      
-              # Status Label
-              pill(d, LX1, 185, LX2, 245, ACCENT_RED, r=14)
-              text_c(d, "ထွက်ကြဟန်း", LC, 215, F_LABEL, TEXT_MAIN)
-      
-              # Sub Label
-              pill(d, LX1, 260, LX2, 310, CARD_BG, outline=CARD_ACCENT, r=12)
-              text_c(d, "ဟောတိပ်", LC, 285, F_TINY, TEXT_MUTED)
-      
-              # PAT Value Card (Big Number)
-              pill(d, LX1, 325, LX2, 425, CARD_BG, outline=ACCENT_GOLD, r=16, width=2)
-              text_c(d, PAT, LC, 375, F_NUM, ACCENT_GOLD)
-      
-              # Date Card
-              pill(d, LX1, 440, LX2, 490, CARD_BG, outline=CARD_ACCENT, r=12)
-              text_c(d, date, LC, 465, F_TINY, TEXT_MUTED)
-      
-              # RIGHT PANEL
-              # Date Top Right
-              pill(d, RX1, 15, RX2, 75, CARD_BG, outline=CARD_ACCENT, r=14)
-              text_c(d, date, RC, 45, F_DATE, TEXT_MAIN)
-      
-              # PAT Badge Right
-              pill(d, RX1, 90, RX2, 140, CARD_BG, outline=ACCENT_GOLD, r=12)
-              text_c(d, f"ပတ်သီး  {PAT}", RC, 115, F_TINY, ACCENT_GOLD)
-      
-              # MAIN Title
-              pill(d, RX1, 155, RX1+140, 205, CARD_BG, outline=CARD_ACCENT, r=12)
-              text_c(d, "မိန်း", RX1+70, 180, F_LABEL, TEXT_MUTED)
-      
-              # MAIN Value Card
-              pill(d, RX1, 220, RX2, 320, CARD_BG, outline=ACCENT_GREEN, r=16, width=2)
-              text_c(d, MAIN, RC, 270, F_NUM, ACCENT_GREEN)
-      
-              # ALT Title
-              pill(d, RX1, 335, RX1+140, 385, CARD_BG, outline=CARD_ACCENT, r=12)
-              text_c(d, "အရံ", RX1+70, 360, F_LABEL, TEXT_MUTED)
-      
-              # ALT Value Card
-              pill(d, RX1, 400, RX2, 500, CARD_BG, outline=ACCENT_GREEN, r=16, width=2)
-              text_c(d, ALT, RC, 450, F_NUM, ACCENT_GREEN)
-      
+
+              for i in range(8):
+                  d.rectangle([0, i, W, i+1], fill=(255-i*10, 200-i*5, 0))
+
+              # LEFT
+              pill(d, LX1, 8, LX2, 72, RED, outline=DKRED, r=18)
+              text_c(d, SESS_TIME, LC, 40, F_SESS, WHITE, stroke=1)
+
+              pill(d, LX1, 78, LX2, 138, WHITE, outline=(180,180,180), r=12)
+
+              pill(d, LX1, 144, LX2, 224, BLUE, outline=DKBLUE, r=16)
+              text_c(d, day_my, LC, 168, F_DAY, WHITE, stroke=1)
+              text_c(d, SESS_MY, LC, 206, F_TINY, (200,230,255), stroke=0)
+
+              pill(d, LX1, 230, LX2, 298, RED, outline=DKRED, r=14)
+              text_c(d, "ထွက်ကြဟန်း", LC, 264, F_LABEL, WHITE, stroke=1)
+
+              pill(d, LX1, 304, LX2, 356, AMBER, outline=DKAMBER, r=12)
+              text_c(d, "ဟောတိပ်", LC, 330, F_TINY, WHITE, stroke=1)
+
+              pill(d, LX1, 362, LX2, 440, CHARCOAL, outline=GOLD, r=16, width=3)
+              text_c(d, PAT, LC, 401, F_NUM, GOLD, stroke=2, stroke_color=(80,60,0))
+
+              pill(d, LX1, 446, LX2, 500, DKRED, outline=RED, r=12)
+              text_c(d, date, LC, 473, F_TINY, WHITE, stroke=1)
+
+              # RIGHT
+              pill(d, RX1, 8, RX2, 72, RED, outline=DKRED, r=18)
+              text_c(d, date, RC, 40, F_DATE, WHITE, stroke=1)
+
+              pill(d, RX1, 78, RX2, 128, DKRED, outline=RED, r=12)
+              text_c(d, f"ပတ်သီး  {PAT}", RC, 103, F_TINY, GOLD, stroke=1)
+
+              pill(d, RX1, 134, RX1+146, 194, PURPLE, outline=DKPURPLE, r=14)
+              text_c(d, "မိန်း", RX1+73, 164, F_LABEL, WHITE, stroke=1)
+
+              pill(d, RX1, 200, RX2, 292, DKGREEN, outline=GREEN, r=20, width=3)
+              text_c(d, MAIN, RC, 246, F_NUM, LTGREEN, stroke=2, stroke_color=(0,40,10))
+
+              pill(d, RX1, 298, RX1+146, 358, PURPLE, outline=DKPURPLE, r=14)
+              text_c(d, "အရံ", RX1+73, 328, F_LABEL, WHITE, stroke=1)
+
+              pill(d, RX1, 364, RX2, 456, DKGREEN, outline=GREEN, r=20, width=3)
+              text_c(d, ALT, RC, 410, F_NUM, LTGREEN, stroke=2, stroke_color=(0,40,10))
+
+              d.rectangle([0, H-6, W, H], fill=RED)
+              d.rectangle([0, H-12, W, H-6], fill=GOLD)
+
               return img
-      
+
           BG = build_bg()
-      
+
           last_screen = None
           lock = threading.Lock()
           running = True
-      
+
           def grab():
               global last_screen, running
               while running:
@@ -232,20 +237,20 @@ jobs:
                   except Exception as e:
                       sys.stderr.write(f"grab err: {e}\n")
                   time.sleep(0.5)
-      
+
           threading.Thread(target=grab, daemon=True).start()
-      
+
           sys.stderr.write("Waiting for screen...\n"); sys.stderr.flush()
           for _ in range(120):
               with lock:
                   if last_screen: break
               time.sleep(0.5)
-      
+
           if not last_screen:
               sys.stderr.write("No screen!\n"); sys.stderr.flush(); sys.exit(1)
-      
+
           sys.stderr.write("Compositing started!\n"); sys.stderr.flush()
-      
+
           SUB_TEXTS = [
               "Subscribe လုပ်ပြီး Bell နှိပ်ပါ!",
               "Like နှင့် Share လုပ်ပေးပါ!",
@@ -255,10 +260,10 @@ jobs:
           sub_idx  = 0
           sub_tick = 0
           SUB_CYCLE = FPS * 4
-      
+
           out = sys.stdout.buffer
           frame_n = 0
-      
+
           try:
               while True:
                   t0 = time.time()
@@ -267,17 +272,17 @@ jobs:
                   if sub_tick >= SUB_CYCLE:
                       sub_tick = 0
                       sub_idx = (sub_idx + 1) % len(SUB_TEXTS)
-      
+
                   frame = BG.copy()
                   d2 = ImageDraw.Draw(frame)
-      
-                  # Realtime Clock (Clean Card)
+
+                  # clock
                   t = mmt_now()
                   clock_str = t.strftime("%H:%M:%S")
-                  pill(d2, LX1, 90, LX2, 140, CARD_BG, outline=CARD_ACCENT, r=12)
-                  text_c(d2, clock_str, LC, 115, F_CLOCK, ACCENT_BLUE)
-      
-                  # Phone Screen Frame (Modern Border)
+                  pill(d2, LX1, 78, LX2, 138, WHITE, outline=(180,180,180), r=12)
+                  text_c(d2, clock_str, LC, 108, F_CLOCK, BLACK)
+
+                  # phone screen
                   with lock: raw = last_screen
                   try:
                       phone_img = Image.open(io.BytesIO(raw)).convert("RGB")
@@ -285,59 +290,54 @@ jobs:
                       pw, ph = phone_img.size
                       px = PHONE_X + (PHONE_W - pw) // 2
                       py = PHONE_Y + (PHONE_H - ph) // 2
-                      
-                      # Phone outer container
                       d2.rounded_rectangle(
-                          [PHONE_X-4, PHONE_Y-4, PHONE_X+PHONE_W+4, PHONE_Y+PHONE_H+4],
-                          radius=20, fill=CARD_BG, outline=CARD_ACCENT, width=2)
+                          [PHONE_X-6, PHONE_Y-6, PHONE_X+PHONE_W+6, PHONE_Y+PHONE_H+6],
+                          radius=24, fill=BLACK, outline=GOLD, width=3)
                       frame.paste(phone_img, (px, py))
                   except Exception as e:
                       sys.stderr.write(f"paste err: {e}\n")
-      
-                  # Modern Dynamic Subscribe Bar
-                  pulse = 0.85 + 0.15 * math.sin(frame_n * 0.12)
-                  bar_color = (int(35 * pulse), int(40 * pulse), int(55 * pulse)) # Dynamic Card Blue
-                  
-                  pill(d2, 16, 535, W-16, 605, bar_color, outline=CARD_ACCENT, r=16, width=1)
-      
-                  # Notification Indicator
-                  bell_r = int(14 + 3 * math.sin(frame_n * 0.2))
-                  bx, by = 60, 570
+
+                  # subscribe bar
+                  pulse = 0.7 + 0.3 * math.sin(frame_n * 0.15)
+                  r_c = int(220 * pulse)
+                  g_c = int(40  * pulse)
+                  b_c = int(40  * pulse)
+                  pill(d2, 8, 520, W-8, 590, (r_c,g_c,b_c), outline=(255,80,80), r=20, width=3)
+
+                  bell_r = int(18 + 4 * math.sin(frame_n * 0.2))
+                  bx, by = 55, 555
                   d2.ellipse([bx-bell_r, by-bell_r, bx+bell_r, by+bell_r],
-                             fill=ACCENT_GOLD, outline=TEXT_MAIN)
-      
-                  # Fading Text Effect
+                             fill=GOLD, outline=WHITE)
+
                   sub_text = SUB_TEXTS[sub_idx]
                   alpha_f = min(1.0, sub_tick / 10)
                   txt_color = (int(255*alpha_f), int(255*alpha_f), int(255*alpha_f))
-                  text_c(d2, sub_text, W//2 - 20, 570, F_SUB, txt_color)
-      
-                  # Premium Subscribe Button
-                  pill(d2, W-216, 547, W-32, 593, ACCENT_RED, r=10)
-                  text_c(d2, "SUBSCRIBE", W-124, 570, F_SUB_SM, TEXT_MAIN)
-      
-                  # Live Badge
-                  pill(d2, RX1, 535, RX2, 575, CARD_BG, outline=ACCENT_RED, r=10, width=1)
-                  text_c(d2, "• LIVE NOW", RC, 555, F_SUB_SM, ACCENT_RED)
-      
+                  text_c(d2, sub_text, W//2 + 20, 555, F_SUB, txt_color, stroke=2)
+
+                  pill(d2, W-210, 530, W-18, 582, WHITE, outline=RED, r=16, width=3)
+                  text_c(d2, "SUBSCRIBE", W-114, 556, F_SUB_SM, RED)
+
+                  pill(d2, RX1, 470, RX2, 510, CHARCOAL, outline=GOLD, r=10, width=2)
+                  text_c(d2, "LIVE NOW", RC, 490, F_SUB_SM, WHITE)
+
                   out.write(frame.tobytes())
                   out.flush()
-      
+
                   if frame_n % 100 == 0:
                       sys.stderr.write(f"frames={frame_n} t={clock_str}\n")
                       sys.stderr.flush()
-      
+
                   dt = INTERVAL - (time.time() - t0)
                   if dt > 0: time.sleep(dt)
-      
+
           except BrokenPipeError:
               sys.stderr.write("Done.\n")
           finally:
               running = False
           PYEOF
           chmod +x /tmp/compositor.py
-          echo "✅ Modern Compositor ready!"
-    
+          echo "✅ Compositor ready!"
+
       - name: Create Stream Script
         run: |
           cat > /tmp/stream.sh << 'SCRIPT'
