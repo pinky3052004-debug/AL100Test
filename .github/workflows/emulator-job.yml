@@ -160,9 +160,9 @@ jobs:
           PHONE_X, PHONE_Y = 330, 10
           PHONE_W, PHONE_H = 620, 700
 
-          LX1, LX2 = 8, 420
+          LX1, LX2 = 19, 420
           LC = (LX1+LX2)//2
-          RX1, RX2 = 960, 1272
+          RX1, RX2 = 860, 1261
           RC = (RX1+RX2)//2
 
           def build_bg():
