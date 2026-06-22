@@ -107,24 +107,38 @@ jobs:
           sys.stderr.write(f"English font: {EN_PATH}\n")
           sys.stderr.flush()
 
-          def load_font(size, myanmar=False):
-              path = MY_PATH if (myanmar and MY_PATH) else EN_PATH
-              if path:
-                  try:
-                      return ImageFont.truetype(path, size)
-                  except:
-                      pass
-              return ImageFont.load_default()
+          def load_font(size, myanmar=False, bold=False):
+          if myanmar:
+              # မြန်မာစာအတွက် Bold သို့မဟုတ် Regular လမ်းကြောင်းကို ရွေးချယ်ခြင်း
+              path = (
+                  "/usr/share/fonts/truetype/noto/NotoSansMyanmar-Bold.ttf" if bold 
+                  else "/usr/share/fonts/truetype/noto/NotoSansMyanmar-Regular.ttf"
+              )
+          else:
+              # အင်္ဂလိပ်စာအတွက် (သင့်မှာရှိတဲ့ EN_PATH Bold/Regular ကို ဒီမှာ ချိန်ညှိပါ)
+              # ဥပမာအနေနဲ့ အင်္ဂလိပ်စာအတွက်လည်း bold စစ်ပေးထားပါတယ်
+              if bold:
+                  path = "fonts/Arial-Bold.ttf"  # သင့်ဆီက EN Bold Path အစားထိုးပါ
+              else:
+                  path = EN_PATH  # သင့်ရဲ့ မူလ EN_PATH (Regular)
+                  
+          if path:
+              try:
+                  return ImageFont.truetype(path, size)
+              except:
+                  pass
+                  
+          return ImageFont.load_default()
 
           F_CLOCK  = load_font(54)
           F_NUM    = load_font(68)
           F_DATE   = load_font(44)
-          F_SESS   = load_font(40)
-          F_LABEL  = load_font(28, myanmar=True)
-          F_DAY    = load_font(30, myanmar=True)
+          F_SESS   = load_font(48)
+          F_LABEL  = load_font(30, myanmar=True, bold=True)
+          F_DAY    = load_font(40, myanmar=True, bold=True)
           F_SUB    = load_font(32)
           F_SUB_SM = load_font(22)
-          F_TINY   = load_font(20, myanmar=True)
+          F_TINY   = load_font(30, myanmar=True, bold=True)
 
           YELLOW   = (255, 215,   0)
           RED      = (204,   0,   0)
@@ -172,50 +186,65 @@ jobs:
               for i in range(8):
                   d.rectangle([0, i, W, i+1], fill=(255-i*10, 200-i*5, 0))
 
-              # LEFT
-              pill(d, LX1, 8, LX2, 72, RED, outline=DKRED, r=18)
+              # 1. Session Time Pill (H: 72px, Center Y: 40)
+              pill(d, LX1, 4, LX2, 76, RED, outline=DKRED, r=36)
               text_c(d, SESS_TIME, LC, 40, F_SESS, WHITE, stroke=1)
-
-              pill(d, LX1, 78, LX2, 138, WHITE, outline=(180,180,180), r=12)
-
-              pill(d, LX1, 144, LX2, 224, BLUE, outline=DKBLUE, r=16)
-              text_c(d, day_my, LC, 168, F_DAY, WHITE, stroke=1)
-              text_c(d, SESS_MY, LC, 206, F_TINY, (200,230,255), stroke=0)
-
-              pill(d, LX1, 230, LX2, 298, RED, outline=DKRED, r=14)
+              
+              # 2. Empty White Pill (H: 60px)
+              pill(d, LX1, 80, LX2, 140, WHITE, outline=(180,180,180), r=30)
+              
+              # 3. Day & Session Myan Pill - BOLD (H: 100px, Center Y: 184)
+              pill(d, LX1, 134, LX2, 234, BLUE, outline=DKBLUE, r=50)
+              text_c(d, day_my, LC, 164, F_DAY, WHITE, stroke=1)
+              text_c(d, SESS_MY, LC, 204, F_TINY, (200,230,255), stroke=0)
+              
+              # 4. ထွက်ကြဟန်း Pill - BOLD (H: 74px, Center Y: 264)
+              pill(d, LX1, 227, LX2, 301, RED, outline=DKRED, r=37)
               text_c(d, "ထွက်ကြဟန်း", LC, 264, F_LABEL, WHITE, stroke=1)
-
-              pill(d, LX1, 304, LX2, 356, AMBER, outline=DKAMBER, r=12)
+              
+              # 5. ဟောတိပ် Pill - BOLD (H: 64px, Center Y: 330)
+              pill(d, LX1, 298, LX2, 362, AMBER, outline=DKAMBER, r=32)
               text_c(d, "ဟောတိပ်", LC, 330, F_TINY, WHITE, stroke=1)
-
-              pill(d, LX1, 362, LX2, 440, CHARCOAL, outline=GOLD, r=16, width=3)
+              
+              # 6. PAT Number Pill (H: 78px, Center Y: 401)
+              pill(d, LX1, 362, LX2, 440, CHARCOAL, outline=GOLD, r=39, width=3)
               text_c(d, PAT, LC, 401, F_NUM, GOLD, stroke=2, stroke_color=(80,60,0))
-
-              pill(d, LX1, 446, LX2, 500, DKRED, outline=RED, r=12)
-              text_c(d, date, LC, 473, F_TINY, WHITE, stroke=1)
-
-              # RIGHT
-              pill(d, RX1, 8, RX2, 72, RED, outline=DKRED, r=18)
+              
+              # 7. Date Pill - BOLD (H: 64px, Center Y: 475)
+              pill(d, LX1, 443, LX2, 507, DKRED, outline=RED, r=32)
+              text_c(d, date, LC, 475, F_TINY, WHITE, stroke=1)
+              
+              
+              # ==================== RIGHT COLUMN (BOLD TUNED) ====================
+              
+              # 1. Date Pill (H: 64px, Center Y: 40)
+              pill(d, RX1, 8, RX2, 72, RED, outline=DKRED, r=32)
               text_c(d, date, RC, 40, F_DATE, WHITE, stroke=1)
-
-              pill(d, RX1, 78, RX2, 128, DKRED, outline=RED, r=12)
-              text_c(d, f"ပတ်သီး  {PAT}", RC, 103, F_TINY, GOLD, stroke=1)
-
-              pill(d, RX1, 134, RX1+146, 194, PURPLE, outline=DKPURPLE, r=14)
-              text_c(d, "မိန်း", RX1+73, 164, F_LABEL, WHITE, stroke=1)
-
-              pill(d, RX1, 200, RX2, 292, DKGREEN, outline=GREEN, r=20, width=3)
+              
+              # 2. ပတ်သီး Pill - BOLD (H: 64px, Center Y: 105)
+              pill(d, RX1, 73, RX2, 137, DKRED, outline=RED, r=32)
+              text_c(d, f"ပတ်သီး  {PAT}", RC, 105, F_TINY, GOLD, stroke=1)
+              
+              # 3. မိန်း Label Pill - BOLD (H: 64px, Center Y: 166)
+              pill(d, RX1, 134, RX1+146, 198, PURPLE, outline=DKPURPLE, r=32)
+              text_c(d, "မိန်း", RX1+73, 166, F_LABEL, WHITE, stroke=1)
+              
+              # 4. MAIN Number Pill (H: 92px, Center Y: 246)
+              pill(d, RX1, 200, RX2, 292, DKGREEN, outline=GREEN, r=46, width=3)
               text_c(d, MAIN, RC, 246, F_NUM, LTGREEN, stroke=2, stroke_color=(0,40,10))
-
-              pill(d, RX1, 298, RX1+146, 358, PURPLE, outline=DKPURPLE, r=14)
+              
+              # 5. အရံ Label Pill - BOLD (H: 64px, Center Y: 328)
+              pill(d, RX1, 296, RX1+146, 360, PURPLE, outline=DKPURPLE, r=32)
               text_c(d, "အရံ", RX1+73, 328, F_LABEL, WHITE, stroke=1)
-
-              pill(d, RX1, 364, RX2, 456, DKGREEN, outline=GREEN, r=20, width=3)
+              
+              # 6. ALT Number Pill (H: 92px, Center Y: 410)
+              pill(d, RX1, 364, RX2, 456, DKGREEN, outline=GREEN, r=46, width=3)
               text_c(d, ALT, RC, 410, F_NUM, LTGREEN, stroke=2, stroke_color=(0,40,10))
-
+              
+              
+              # Bottom Bars
               d.rectangle([0, H-6, W, H], fill=RED)
               d.rectangle([0, H-12, W, H-6], fill=GOLD)
-
               return img
 
           BG = build_bg()
