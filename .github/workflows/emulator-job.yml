@@ -160,9 +160,9 @@ jobs:
           PHONE_X, PHONE_Y = 330, 10
           PHONE_W, PHONE_H = 620, 700
 
-          LX1, LX2 = 39, 420
+          LX1, LX2 = 73, 407
           LC = (LX1+LX2)//2
-          RX1, RX2 = 860, 1241
+          RX1, RX2 = 884, 1211
           RC = (RX1+RX2)//2
 
           def build_bg():
@@ -173,59 +173,48 @@ jobs:
                   d.rectangle([0, i, W, i+1], fill=(255-i*10, 200-i*5, 0))
 
               # 1. Session Time Pill (H: 72px, Center Y: 40)
-              pill(d, LX1, 4, LX2, 76, RED, outline=DKRED, r=36)
-              text_c(d, SESS_TIME, LC, 40, F_SESS, WHITE, stroke=1)
+              pill(d, LX1, 10, LX2, 99, RED, outline=DKRED, r=36)
+              text_c(d, SESS_TIME, LC, 55, F_SESS, WHITE, stroke=1)
               
               # 2. Empty White Pill (H: 60px)
-              pill(d, LX1, 80, LX2, 140, WHITE, outline=(180,180,180), r=30)
+              pill(d, LX1, 116, LX2, 158.5, WHITE, outline=(180,180,180), r=30)
               
               # 3. Day & Session Myan Pill - BOLD (H: 100px, Center Y: 184)
-              pill(d, LX1, 134, LX2, 234, BLUE, outline=DKBLUE, r=50)
-              text_c(d, day_my, LC, 164, F_DAY, WHITE, stroke=1)
-              text_c(d, SESS_MY, LC, 204, F_TINY, (200,230,255), stroke=0)
+              pill(d, LX1, 222, LX2, 441, BLUE, outline=DKBLUE, r=50)
+              text_c(d, day_my, LC, 272, F_DAY, WHITE, stroke=1)
+              text_c(d, SESS_MY, LC, 331, F_TINY, (200,230,255), stroke=0)
+              text_c(d, "ထွက်ကြဟန်း", LC, 389, F_LABEL, WHITE, stroke=1)
+
+              pill(d, LX1, 466, LX2, 555, RED, outline=DKRED, r=36)
+              text_c(d, Live Now, LC, 510, F_SESS, WHITE, stroke=1)
               
-              # 4. ထွက်ကြဟန်း Pill - BOLD (H: 74px, Center Y: 264)
-              pill(d, LX1, 227, LX2, 301, RED, outline=DKRED, r=37)
-              text_c(d, "ထွက်ကြဟန်း", LC, 264, F_LABEL, WHITE, stroke=1)
-              
-              # 5. ဟောတိပ် Pill - BOLD (H: 64px, Center Y: 330)
-              pill(d, LX1, 298, LX2, 362, AMBER, outline=DKAMBER, r=32)
-              text_c(d, "ဟောတိပ်", LC, 330, F_TINY, WHITE, stroke=1)
-              
-              # 6. PAT Number Pill (H: 78px, Center Y: 401)
-              pill(d, LX1, 362, LX2, 440, CHARCOAL, outline=GOLD, r=39, width=3)
-              text_c(d, PAT, LC, 401, F_NUM, GOLD, stroke=2, stroke_color=(80,60,0))
-              
-              # 7. Date Pill - BOLD (H: 64px, Center Y: 475)
-              pill(d, LX1, 443, LX2, 507, DKRED, outline=RED, r=32)
-              text_c(d, date, LC, 475, F_TINY, WHITE, stroke=1)
               
               
               # ==================== RIGHT COLUMN (BOLD TUNED) ====================
               
               # 1. Date Pill (H: 64px, Center Y: 40)
-              pill(d, RX1, 8, RX2, 72, RED, outline=DKRED, r=32)
-              text_c(d, date, RC, 40, F_DATE, WHITE, stroke=1)
+              pill(d, RX1, 10, RX2, 99, RED, outline=DKRED, r=32)
+              text_c(d, date, RC, 55, F_DATE, WHITE, stroke=1)
               
               # 2. ပတ်သီး Pill - BOLD (H: 64px, Center Y: 105)
-              pill(d, RX1, 73, RX2, 137, DKRED, outline=RED, r=32)
-              text_c(d, f"ပတ်သီး  {PAT}", RC, 105, F_TINY, GOLD, stroke=1)
+              pill(d, RX1, 117, RX2, 206, DKRED, outline=RED, r=32)
+              text_c(d, f"ပတ်သီး  {PAT}", RC, 162, F_TINY, GOLD, stroke=1)
               
               # 3. မိန်း Label Pill - BOLD (H: 64px, Center Y: 166)
-              pill(d, RX1, 134, RX1+146, 198, PURPLE, outline=DKPURPLE, r=32)
-              text_c(d, "မိန်း", RX1+73, 166, F_LABEL, WHITE, stroke=1)
+              pill(d, 892, 223, 1029, 292, PURPLE, outline=DKPURPLE, r=32)
+              text_c(d, "မိန်း", RX1+73, 258, F_LABEL, WHITE, stroke=1)
               
               # 4. MAIN Number Pill (H: 92px, Center Y: 246)
-              pill(d, RX1, 200, RX2, 292, DKGREEN, outline=GREEN, r=46, width=3)
-              text_c(d, MAIN, RC, 246, F_NUM, LTGREEN, stroke=2, stroke_color=(0,40,10))
+              pill(d, RX1, 282, RX2, 382, DKGREEN, outline=GREEN, r=46, width=3)
+              text_c(d, MAIN, RC, 332, F_NUM, LTGREEN, stroke=2, stroke_color=(0,40,10))
               
               # 5. အရံ Label Pill - BOLD (H: 64px, Center Y: 328)
-              pill(d, RX1, 296, RX1+146, 360, PURPLE, outline=DKPURPLE, r=32)
-              text_c(d, "အရံ", RX1+73, 328, F_LABEL, WHITE, stroke=1)
+              pill(d, 892, 296, 1029, 360, PURPLE, outline=DKPURPLE, r=32)
+              text_c(d, "အရံ", RX1+73, 960, F_LABEL, WHITE, stroke=1)
               
               # 6. ALT Number Pill (H: 92px, Center Y: 410)
-              pill(d, RX1, 364, RX2, 456, DKGREEN, outline=GREEN, r=46, width=3)
-              text_c(d, ALT, RC, 410, F_NUM, LTGREEN, stroke=2, stroke_color=(0,40,10))
+              pill(d, RX1, 460, RX2, 560, DKGREEN, outline=GREEN, r=46, width=3)
+              text_c(d, ALT, RC, 510, F_NUM, LTGREEN, stroke=2, stroke_color=(0,40,10))
               
               
               # Bottom Bars
