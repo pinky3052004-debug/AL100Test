@@ -174,17 +174,17 @@ jobs:
 
               # LEFT
               pill(d, LX1, 10, LX2, 99, RED, outline=DKRED, r=18)
-              text_c(d, SESS_TIME, LC, 55, F_SESS, WHITE, stroke=1)
+              text_c(d, SESS_TIME, LC, 50, F_SESS, WHITE, stroke=1)
 
-              # pill(d, LX1, 116, LX2, 159, WHITE, outline=(180,180,180), r=12)
+              pill(d, LX1, 116, LX2, 159, WHITE, outline=(180,180,180), r=12)
 
               pill(d, LX1, 222, LX2, 441, BLUE, outline=DKBLUE, r=16)
-              text_c(d, day_my, LC, 250, F_DAY, WHITE, stroke=1)
+              text_c(d, day_my, LC, 240, F_DAY, WHITE, stroke=1)
               text_c(d, SESS_MY, LC, 331, F_TINY, (200,230,255), stroke=0)
               text_c(d, "ထွက်ကြဟန်း", LC, 389, F_LABEL, WHITE, stroke=1)
 
               pill(d, LX1, 466, LX2, 555, AMBER, outline=DKAMBER, r=12)
-              text_c(d, "Live Now", LC, 510, F_TINY, WHITE, stroke=1)
+              text_c(d, "Live Now", LC, 490, F_TINY, WHITE, stroke=1)
               
 
               # RIGHT
