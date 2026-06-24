@@ -116,15 +116,16 @@ jobs:
                       pass
               return ImageFont.load_default()
 
-          F_CLOCK  = load_font(54)
+          F_CLOCK  = load_font(65)
           F_NUM    = load_font(68)
           F_DATE   = load_font(44)
-          F_SESS   = load_font(48)
+          F_SESS   = load_font(54)
           F_LABEL  = load_font(33, myanmar=True)
           F_DAY    = load_font(50, myanmar=True)
           F_SUB    = load_font(32)
           F_SUB_SM = load_font(22)
           F_TINY   = load_font(35, myanmar=True)
+          F_LIVE   = load_font(44)
 
           YELLOW   = (255, 215,   0)
           RED      = (204,   0,   0)
@@ -176,7 +177,7 @@ jobs:
               pill(d, LX1, 10, LX2, 99, RED, outline=DKRED, r=18)
               text_c(d, SESS_TIME, LC, 50, F_SESS, WHITE, stroke=1)
 
-              pill(d, LX1, 116, LX2, 159, WHITE, outline=(180,180,180), r=12)
+              pill(d, LX1, 116, LX2, 205, WHITE, outline=(180,180,180), r=12)
 
               pill(d, LX1, 222, LX2, 441, BLUE, outline=DKBLUE, r=16)
               text_c(d, day_my, LC, 240, F_DAY, WHITE, stroke=1)
@@ -184,7 +185,7 @@ jobs:
               text_c(d, "ထွက်ကြဟန်း", LC, 389, F_LABEL, WHITE, stroke=1)
 
               pill(d, LX1, 466, LX2, 555, AMBER, outline=DKAMBER, r=12)
-              text_c(d, "Live Now", LC, 490, F_TINY, WHITE, stroke=1)
+              text_c(d, "Live Now", LC, 490, F_LIVE, WHITE, stroke=1)
               
 
               # RIGHT
@@ -272,8 +273,8 @@ jobs:
                   # clock
                   t = mmt_now()
                   clock_str = t.strftime("%H:%M:%S")
-                  pill(d2, LX1, 116, LX2, 159, WHITE, outline=(180,180,180), r=12)
-                  text_c(d2, clock_str, LC, 138, F_CLOCK, BLACK)
+                  pill(d2, LX1, 116, LX2, 205, WHITE, outline=(180,180,180), r=12)
+                  text_c(d2, clock_str, LC, 160, F_CLOCK, BLACK)
 
                   # phone screen
                   with lock: raw = last_screen
