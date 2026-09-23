@@ -316,10 +316,238 @@ jobs:
 
 
       # ==========================================================
-      # ANDROID EMULATOR
+      # WRITE POST-BOOT SCRIPT TO A FILE
       #
       # IMPORTANT:
-      # Everything that needs adb is INSIDE script.
+      # ReactiveCircus/android-emulator-runner's "script:" input
+      # does NOT execute as one continuous shell script. It splits
+      # the block by newline and runs EACH LINE as its own separate
+      # `sh -c` process. That breaks any multi-line if/for/while
+      # block and any variable that needs to survive to the next
+      # line (each line is a fresh process with no shared state).
+      #
+      # To avoid that entirely, the real logic lives in this file,
+      # created here as a normal step (which DOES run as one real
+      # script, so heredocs/if/for/while/variables all work). The
+      # emulator step below then just calls this file as ONE line.
+      # ==========================================================
+
+      - name: Create post-boot script
+        run: |
+          cat > "$GITHUB_WORKSPACE/emulator_script.sh" <<'BASH'
+          #!/usr/bin/env bash
+          set -e
+
+          echo "=========================================="
+          echo "ANDROID EMULATOR READY"
+          echo "=========================================="
+
+          adb devices
+
+          echo ""
+          echo "Android version:"
+          adb shell getprop ro.build.version.release
+
+          echo ""
+          echo "Screen:"
+          adb shell wm size
+
+          # ======================================================
+          # FORCE PORTRAIT
+          # ======================================================
+
+          adb shell settings put system accelerometer_rotation 0 || true
+          adb shell settings put system user_rotation 0 || true
+
+          # ======================================================
+          # WAKE SCREEN
+          # ======================================================
+
+          adb shell input keyevent KEYCODE_WAKEUP || true
+          adb shell settings put system screen_off_timeout 2147483647 || true
+
+          # ======================================================
+          # INSTALL APK
+          # ======================================================
+
+          echo ""
+          echo "=========================================="
+          echo "INSTALLING APK"
+          echo "=========================================="
+
+          adb install -r "$GITHUB_WORKSPACE/target_app.apk"
+
+          echo ""
+          echo "APK installed."
+
+          # ======================================================
+          # PACKAGE
+          # (known package name — no aapt/pm parsing needed)
+          # ======================================================
+
+          echo ""
+          echo "=========================================="
+          echo "APK PACKAGE"
+          echo "=========================================="
+
+          PACKAGE="network.kalock.myanmar2d"
+
+          echo "Package: $PACKAGE"
+
+          echo ""
+          echo "Verifying package is installed..."
+
+          if ! adb shell pm list packages | grep -q "package:$PACKAGE"; then
+            echo "ERROR: $PACKAGE is not installed on the device."
+            exit 1
+          fi
+
+          echo "Confirmed installed."
+
+          # ======================================================
+          # LAUNCH APK
+          # (monkey launcher — no need to resolve the specific
+          # launch activity, so no aapt/dumpsys parsing required)
+          # ======================================================
+
+          echo ""
+          echo "=========================================="
+          echo "STARTING APK"
+          echo "=========================================="
+
+          adb shell monkey -p "$PACKAGE" -c android.intent.category.LAUNCHER 1
+
+          sleep 8
+
+          echo "APK started."
+
+          # ======================================================
+          # CHECK SCREEN
+          # ======================================================
+
+          echo ""
+          echo "=========================================="
+          echo "TEST SCREEN CAPTURE"
+          echo "=========================================="
+
+          rm -f "$GITHUB_WORKSPACE/test.h264"
+
+          timeout 12s adb exec-out screenrecord --output-format=h264 --size 540x960 --bit-rate 4000000 --time-limit 5 - > "$GITHUB_WORKSPACE/test.h264" || true
+
+          if [ ! -s "$GITHUB_WORKSPACE/test.h264" ]; then
+            echo "ERROR: Android screen capture failed."
+            exit 1
+          fi
+
+          echo "Screen capture OK."
+
+          # ======================================================
+          # YOUTUBE STREAM KEY CHECK
+          # ======================================================
+
+          if [ -z "$YOUTUBE_STREAM_KEY" ]; then
+            echo ""
+            echo "ERROR: YOUTUBE_STREAM_KEY is empty."
+            echo ""
+            echo "Create this GitHub Secret:"
+            echo "YOUTUBE_STREAM_KEY"
+            exit 1
+          fi
+
+          # ======================================================
+          # CREATE ANDROID SCREEN PIPE
+          # ======================================================
+
+          echo ""
+          echo "=========================================="
+          echo "STARTING SCREEN CAPTURE"
+          echo "=========================================="
+
+          rm -f "$GITHUB_WORKSPACE/android-screen.h264"
+
+          # ======================================================
+          # ANDROID SCREENRECORD
+          #
+          # Each segment is 170 seconds.
+          # This avoids the Android screenrecord time limit.
+          # ======================================================
+
+          (
+            while true
+            do
+              echo ""
+              echo "------------------------------------------"
+              echo "STARTING SCREEN SEGMENT"
+              echo "$(date)"
+              echo "------------------------------------------"
+
+              adb exec-out screenrecord --output-format=h264 --size 540x960 --bit-rate 4000000 --time-limit 170 -
+
+              CODE=$?
+
+              echo ""
+              echo "screenrecord exited: $CODE"
+
+              sleep 1
+            done
+          ) > "$GITHUB_WORKSPACE/android-screen.h264" &
+
+          SCREEN_PID=$!
+
+          echo "Screen capture PID: $SCREEN_PID"
+
+          # ======================================================
+          # WAIT FOR FIRST DATA
+          # ======================================================
+
+          echo "Waiting for Android video..."
+
+          for i in $(seq 1 30)
+          do
+            if [ -s "$GITHUB_WORKSPACE/android-screen.h264" ]; then
+              break
+            fi
+            sleep 1
+          done
+
+          if [ ! -s "$GITHUB_WORKSPACE/android-screen.h264" ]; then
+            echo "ERROR: No Android video data."
+            kill "$SCREEN_PID" || true
+            exit 1
+          fi
+
+          # ======================================================
+          # START FFMPEG
+          # ======================================================
+
+          echo ""
+          echo "=========================================="
+          echo "STARTING FFMPEG"
+          echo "=========================================="
+
+          FILTER="[0:v]scale=540:960:force_original_aspect_ratio=decrease,pad=540:960:(ow-iw)/2:(oh-ih)/2,setsar=1[phone];[1:v]scale=1920:1080[background];[background][phone]overlay=690:45[out]"
+
+          ffmpeg -hide_banner -loglevel info -f h264 -framerate 30 -i "$GITHUB_WORKSPACE/android-screen.h264" -loop 1 -i "$GITHUB_WORKSPACE/background.png" -filter_complex "$FILTER" -map "[out]" -f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 -map 0:v -map 1:a -c:v libx264 -preset veryfast -tune zerolatency -pix_fmt yuv420p -r 30 -g 60 -keyint_min 60 -b:v 4500k -maxrate 5000k -bufsize 10000k -c:a aac -b:a 128k -ar 44100 -f flv "rtmp://a.rtmp.youtube.com/live2/$YOUTUBE_STREAM_KEY"
+
+          # ======================================================
+          # CLEANUP
+          # ======================================================
+
+          kill "$SCREEN_PID" || true
+          BASH
+
+          chmod +x "$GITHUB_WORKSPACE/emulator_script.sh"
+          echo "Post-boot script written."
+
+
+      # ==========================================================
+      # ANDROID EMULATOR
+      #
+      # The "script:" input here is intentionally a SINGLE line.
+      # android-emulator-runner runs each line of this block as its
+      # own separate sh -c process, so anything with multi-line
+      # control flow or cross-line variables must NOT go here
+      # directly — see emulator_script.sh above instead.
       # ==========================================================
 
       - name: Start Android Emulator and Stream
@@ -361,200 +589,4 @@ jobs:
             -camera-back none
             -camera-front none
 
-          script: |
-            set -e
-
-            echo "=========================================="
-            echo "ANDROID EMULATOR READY"
-            echo "=========================================="
-
-            adb devices
-
-            echo ""
-            echo "Android version:"
-            adb shell getprop ro.build.version.release
-
-            echo ""
-            echo "Screen:"
-            adb shell wm size
-
-            # ======================================================
-            # FORCE PORTRAIT
-            # ======================================================
-
-            adb shell settings put system accelerometer_rotation 0 || true
-            adb shell settings put system user_rotation 0 || true
-
-            # ======================================================
-            # WAKE SCREEN
-            # ======================================================
-
-            adb shell input keyevent KEYCODE_WAKEUP || true
-            adb shell settings put system screen_off_timeout 2147483647 || true
-
-            # ======================================================
-            # INSTALL APK
-            # ======================================================
-
-            echo ""
-            echo "=========================================="
-            echo "INSTALLING APK"
-            echo "=========================================="
-
-            adb install -r "$GITHUB_WORKSPACE/target_app.apk"
-
-            echo ""
-            echo "APK installed."
-
-            # ======================================================
-            # FIND PACKAGE
-            # (no aapt dependency — aapt is not guaranteed to be on
-            # PATH on this runner/action. Instead, ask the device
-            # for the most recently installed third-party package,
-            # which is the one we just installed above.)
-            # ======================================================
-
-            echo ""
-            echo "=========================================="
-            echo "FINDING APK PACKAGE"
-            echo "=========================================="
-
-            PACKAGE=$(adb shell pm list packages -3 | tail -n 1 | sed 's/package://' | tr -d '\r')
-
-            if [ -z "$PACKAGE" ]; then
-              echo "ERROR: Could not detect package."
-              exit 1
-            fi
-
-            echo "Package: $PACKAGE"
-
-            # ======================================================
-            # LAUNCH APK
-            # (monkey launcher — no need to resolve the specific
-            # launch activity, so no aapt/dumpsys parsing required)
-            # ======================================================
-
-            echo ""
-            echo "=========================================="
-            echo "STARTING APK"
-            echo "=========================================="
-
-            adb shell monkey -p "$PACKAGE" -c android.intent.category.LAUNCHER 1
-
-            sleep 8
-
-            echo "APK started."
-
-            # ======================================================
-            # CHECK SCREEN
-            # ======================================================
-
-            echo ""
-            echo "=========================================="
-            echo "TEST SCREEN CAPTURE"
-            echo "=========================================="
-
-            rm -f "$GITHUB_WORKSPACE/test.h264"
-
-            timeout 12s adb exec-out screenrecord --output-format=h264 --size 540x960 --bit-rate 4000000 --time-limit 5 - > "$GITHUB_WORKSPACE/test.h264" || true
-
-            if [ ! -s "$GITHUB_WORKSPACE/test.h264" ]; then
-              echo "ERROR: Android screen capture failed."
-              exit 1
-            fi
-
-            echo "Screen capture OK."
-
-            # ======================================================
-            # YOUTUBE STREAM KEY CHECK
-            # ======================================================
-
-            if [ -z "$YOUTUBE_STREAM_KEY" ]; then
-              echo ""
-              echo "ERROR: YOUTUBE_STREAM_KEY is empty."
-              echo ""
-              echo "Create this GitHub Secret:"
-              echo "YOUTUBE_STREAM_KEY"
-              exit 1
-            fi
-
-            # ======================================================
-            # CREATE ANDROID SCREEN PIPE
-            # ======================================================
-
-            echo ""
-            echo "=========================================="
-            echo "STARTING SCREEN CAPTURE"
-            echo "=========================================="
-
-            rm -f "$GITHUB_WORKSPACE/android-screen.h264"
-
-            # ======================================================
-            # ANDROID SCREENRECORD
-            #
-            # Each segment is 170 seconds.
-            # This avoids the Android screenrecord time limit.
-            # ======================================================
-
-            (
-              while true
-              do
-                echo ""
-                echo "------------------------------------------"
-                echo "STARTING SCREEN SEGMENT"
-                echo "$(date)"
-                echo "------------------------------------------"
-
-                adb exec-out screenrecord --output-format=h264 --size 540x960 --bit-rate 4000000 --time-limit 170 -
-
-                CODE=$?
-
-                echo ""
-                echo "screenrecord exited: $CODE"
-
-                sleep 1
-              done
-            ) > "$GITHUB_WORKSPACE/android-screen.h264" &
-
-            SCREEN_PID=$!
-
-            echo "Screen capture PID: $SCREEN_PID"
-
-            # ======================================================
-            # WAIT FOR FIRST DATA
-            # ======================================================
-
-            echo "Waiting for Android video..."
-
-            for i in $(seq 1 30)
-            do
-              if [ -s "$GITHUB_WORKSPACE/android-screen.h264" ]; then
-                break
-              fi
-              sleep 1
-            done
-
-            if [ ! -s "$GITHUB_WORKSPACE/android-screen.h264" ]; then
-              echo "ERROR: No Android video data."
-              kill "$SCREEN_PID" || true
-              exit 1
-            fi
-
-            # ======================================================
-            # START FFMPEG
-            # ======================================================
-
-            echo ""
-            echo "=========================================="
-            echo "STARTING FFMPEG"
-            echo "=========================================="
-
-            FILTER="[0:v]scale=540:960:force_original_aspect_ratio=decrease,pad=540:960:(ow-iw)/2:(oh-ih)/2,setsar=1[phone];[1:v]scale=1920:1080[background];[background][phone]overlay=690:45[out]"
-
-            ffmpeg -hide_banner -loglevel info -f h264 -framerate 30 -i "$GITHUB_WORKSPACE/android-screen.h264" -loop 1 -i "$GITHUB_WORKSPACE/background.png" -filter_complex "$FILTER" -map "[out]" -f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 -map 0:v -map 1:a -c:v libx264 -preset veryfast -tune zerolatency -pix_fmt yuv420p -r 30 -g 60 -keyint_min 60 -b:v 4500k -maxrate 5000k -bufsize 10000k -c:a aac -b:a 128k -ar 44100 -f flv "rtmp://a.rtmp.youtube.com/live2/$YOUTUBE_STREAM_KEY"
-
-            # ======================================================
-            # CLEANUP
-            # ======================================================
-
-            kill "$SCREEN_PID" || true
+          script: bash "$GITHUB_WORKSPACE/emulator_script.sh"
