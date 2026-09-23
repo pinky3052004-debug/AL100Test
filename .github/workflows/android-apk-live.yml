@@ -28,6 +28,11 @@ jobs:
           # fonts-noto-extra is where NotoSansMyanmar actually lives on
           # Debian/Ubuntu — fonts-noto alone does not reliably pull it in.
           sudo apt-get install -y fonts-noto fonts-noto-cjk fonts-noto-extra
+          # libraqm provides complex-script text shaping (conjunct stacking,
+          # medial vowel reordering, etc). Without it Pillow draws Myanmar
+          # codepoints as isolated glyphs, which is why stacked/combining
+          # characters showed up as broken shapes or tofu boxes.
+          sudo apt-get install -y libraqm0 || sudo apt-get install -y libraqm-dev || true
           pip3 install Pillow --break-system-packages
           fc-cache -fv || true
           echo "✅ Done!"
@@ -39,6 +44,8 @@ jobs:
             echo "⚠️  WARNING: No Myanmar font found on this runner."
             echo "⚠️  Myanmar text will render as tofu boxes."
           fi
+          echo "=== Raqm shaping support check ==="
+          python3 -c "from PIL import features; print('raqm available:', features.check_feature('raqm'))"
 
       - name: Download APK
         run: |
@@ -50,7 +57,7 @@ jobs:
           cat > /tmp/compositor.py << 'PYEOF'
           #!/usr/bin/env python3
           import subprocess, sys, time, threading, io, random, datetime, os, math
-          from PIL import Image, ImageDraw, ImageFont
+          from PIL import Image, ImageDraw, ImageFont, features
 
           W, H = 1280, 720
           FPS  = 20
@@ -117,14 +124,38 @@ jobs:
           sys.stderr.write(f"English font: {EN_PATH}\n")
           if MY_PATH is None:
               sys.stderr.write("WARNING: no Myanmar font file found — Myanmar text will fall back to the English font and render as tofu boxes.\n")
+
+          # Myanmar is a complex script: stacked/subjoined consonants,
+          # medial vowels, and reordering all require real text shaping.
+          # Pillow's default layout engine draws each codepoint as an
+          # isolated glyph, which is what produced the broken/tofu text.
+          # Raqm (HarfBuzz + FriBidi under the hood) does proper shaping —
+          # use it whenever this Pillow build supports it.
+          RAQM_OK = False
+          try:
+              RAQM_OK = features.check_feature("raqm")
+          except Exception:
+              RAQM_OK = False
+          sys.stderr.write(f"Raqm shaping available: {RAQM_OK}\n")
+          if not RAQM_OK:
+              sys.stderr.write("WARNING: Raqm not available — Myanmar shaping will still be broken. Check the 'Raqm shaping support check' log in the install step.\n")
           sys.stderr.flush()
+
+          RAQM_LAYOUT = getattr(getattr(ImageFont, "Layout", None), "RAQM", None)
+          if RAQM_LAYOUT is None:
+              RAQM_LAYOUT = getattr(ImageFont, "LAYOUT_RAQM", None)
 
           def load_font(size, myanmar=False):
               path = MY_PATH if (myanmar and MY_PATH) else EN_PATH
               if path:
+                  if RAQM_OK and RAQM_LAYOUT is not None:
+                      try:
+                          return ImageFont.truetype(path, size, layout_engine=RAQM_LAYOUT)
+                      except Exception:
+                          pass
                   try:
                       return ImageFont.truetype(path, size)
-                  except:
+                  except Exception:
                       pass
               return ImageFont.load_default()
 
@@ -202,24 +233,30 @@ jobs:
               
 
               # RIGHT
+              # Each stat is now a label pill stacked directly on top of
+              # its value pill, both the same width — no more side-set
+              # label boxes overlapping the number boxes next to them,
+              # and no more duplicate/overlapping text draws.
               pill(d, RX1, 10, RX2, 99, RED, outline=DKRED, r=18)
-              text_c(d, date, RC, 40, F_DATE, WHITE, stroke=1)
+              text_c(d, date, RC, 45, F_DATE, WHITE, stroke=1)
 
-              pill(d, RX1, 117, RX2, 206, DKRED, outline=RED, r=12)
-              text_c(d, f"ပတ်သီး  {PAT}", RC, 135, F_TINY, GOLD, stroke=1)
-              text_c(d, f"{PAT}", RC+80, 135, F_TINY, GOLD, stroke=1)
+              # PAT
+              pill(d, RX1, 117, RX2, 155, DKRED, outline=RED, r=10)
+              text_c(d, "ပတ်သီး", RC, 136, F_LABEL, GOLD, stroke=1)
+              pill(d, RX1, 163, RX2, 223, RED, outline=DKRED, r=14)
+              text_c(d, PAT, RC, 193, F_PAT, WHITE, stroke=1)
 
-              pill(d, RX1, 282, RX2, 382, DKGREEN, outline=GREEN, r=20)
-              text_c(d, MAIN, RC, 332, F_NUM, LTGREEN, stroke=2, stroke_color=(0,40,10))
+              # MAIN ("မိန်း")
+              pill(d, RX1, 239, RX2, 277, PURPLE, outline=DKPURPLE, r=10)
+              text_c(d, "မိန်း", RC, 258, F_LABEL, WHITE, stroke=1)
+              pill(d, RX1, 285, RX2, 385, DKGREEN, outline=GREEN, r=20)
+              text_c(d, MAIN, RC, 335, F_NUM, LTGREEN, stroke=2, stroke_color=(0,40,10))
 
-              pill(d, 892, 223, 1029, 292, PURPLE, outline=DKPURPLE, r=14)
-              text_c(d, "မိန်း", RX1-23, 258, F_LABEL, WHITE, stroke=1)
-
-              pill(d, RX1, 460, RX2, 560, DKGREEN, outline=GREEN, r=20)
-              text_c(d, ALT, RC, 510, F_NUM, LTGREEN, stroke=2, stroke_color=(0,40,10))
-
-              pill(d, 892, 296, 1029, 360, PURPLE, outline=DKPURPLE, r=14)
-              text_c(d, "အရံ", RX1-23, 328, F_LABEL, WHITE, stroke=1)
+              # ALT ("အရံ")
+              pill(d, RX1, 401, RX2, 439, PURPLE, outline=DKPURPLE, r=10)
+              text_c(d, "အရံ", RC, 420, F_LABEL, WHITE, stroke=1)
+              pill(d, RX1, 447, RX2, 547, DKGREEN, outline=GREEN, r=20)
+              text_c(d, ALT, RC, 497, F_NUM, LTGREEN, stroke=2, stroke_color=(0,40,10))
 
               d.rectangle([0, H-6, W, H], fill=RED)
               d.rectangle([0, H-12, W, H-6], fill=GOLD)
