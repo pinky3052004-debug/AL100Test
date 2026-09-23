@@ -80,26 +80,19 @@ jobs:
 
       - name: Show system information
         run: |
-
           echo "=========================================="
           echo "ANDROID APK YOUTUBE LIVE"
           echo "=========================================="
-
           echo "Repository:"
           echo "$GITHUB_REPOSITORY"
-
           echo "Release:"
           echo "$RELEASE_TAG"
-
           echo "APK:"
           echo "$APK_ASSET"
-
           echo "Runner:"
           echo "$RUNNER_OS"
-
           echo "CPU:"
           nproc
-
           echo "=========================================="
 
 
@@ -109,22 +102,11 @@ jobs:
 
       - name: Install packages
         run: |
-
           sudo apt-get update
-
-          sudo apt-get install -y \
-            ffmpeg \
-            python3 \
-            python3-pil \
-            fonts-noto-core \
-            fonts-noto-extra \
-            fontconfig \
-            imagemagick
-
+          sudo apt-get install -y ffmpeg python3 python3-pil fonts-noto-core fonts-noto-extra fontconfig imagemagick
           echo ""
           echo "FFmpeg:"
           ffmpeg -version | head -n 1
-
           echo ""
           echo "Python:"
           python3 --version
@@ -139,31 +121,18 @@ jobs:
           GH_TOKEN: ${{ github.token }}
 
         run: |
-
           echo "=========================================="
           echo "DOWNLOADING APK"
           echo "=========================================="
-
           rm -f target_app.apk
-
-          gh release download "$RELEASE_TAG" \
-            --repo "$GITHUB_REPOSITORY" \
-            --pattern "$APK_ASSET" \
-            --output target_app.apk
-
+          gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --pattern "$APK_ASSET" --output target_app.apk
           if [ ! -f target_app.apk ]; then
-
             echo "ERROR: APK was not downloaded."
-
             exit 1
-
           fi
-
           echo ""
           echo "APK downloaded successfully."
-
           ls -lh target_app.apk
-
           echo "=========================================="
 
 
@@ -173,370 +142,120 @@ jobs:
 
       - name: Create live background
         run: |
-
           cat > create_background.py <<'PYTHON'
-
           from PIL import Image, ImageDraw, ImageFont
           from datetime import datetime
           from zoneinfo import ZoneInfo
           import os
           import subprocess
 
-
           WIDTH = 1920
           HEIGHT = 1080
 
-
-          LEFT_NUMBER = os.environ.get(
-              "LEFT_NUMBER",
-              "0-3-2"
-          )
-
-          RIGHT_NUMBER_1 = os.environ.get(
-              "RIGHT_NUMBER_1",
-              "5-7-8"
-          )
-
-          RIGHT_NUMBER_2 = os.environ.get(
-              "RIGHT_NUMBER_2",
-              "01-25-17"
-          )
-
-          RIGHT_NUMBER_3 = os.environ.get(
-              "RIGHT_NUMBER_3",
-              "53-76-83"
-          )
-
+          LEFT_NUMBER = os.environ.get("LEFT_NUMBER", "0-3-2")
+          RIGHT_NUMBER_1 = os.environ.get("RIGHT_NUMBER_1", "5-7-8")
+          RIGHT_NUMBER_2 = os.environ.get("RIGHT_NUMBER_2", "01-25-17")
+          RIGHT_NUMBER_3 = os.environ.get("RIGHT_NUMBER_3", "53-76-83")
 
           # ======================================================
           # CURRENT MYANMAR TIME
           # ======================================================
 
-          now = datetime.now(
-              ZoneInfo("Asia/Yangon")
-          )
-
-          date_text = now.strftime(
-              "%d-%m-%Y"
-          )
-
-          time_text = now.strftime(
-              "%I:%M %p"
-          )
-
+          now = datetime.now(ZoneInfo("Asia/Yangon"))
+          date_text = now.strftime("%d-%m-%Y")
+          time_text = now.strftime("%I:%M %p")
 
           # ======================================================
           # FIND FONTS
           # ======================================================
 
           def find_font(pattern):
-
               try:
-
                   result = subprocess.check_output(
-                      [
-                          "fc-match",
-                          "-f",
-                          "%{file}",
-                          pattern
-                      ],
+                      ["fc-match", "-f", "%{file}", pattern],
                       text=True
                   ).strip()
-
                   if result:
                       return result
-
               except Exception:
                   pass
-
               return "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 
-
-          MYANMAR_FONT = find_font(
-              "Noto Sans Myanmar"
-          )
-
-          LATIN_FONT = find_font(
-              "DejaVu Sans"
-          )
-
-          LATIN_BOLD = find_font(
-              "DejaVu Sans:style=Bold"
-          )
-
+          MYANMAR_FONT = find_font("Noto Sans Myanmar")
+          LATIN_FONT = find_font("DejaVu Sans")
+          LATIN_BOLD = find_font("DejaVu Sans:style=Bold")
 
           print("Myanmar font:")
           print(MYANMAR_FONT)
-
           print("Latin font:")
           print(LATIN_FONT)
 
-
           def mm(size):
-
-              return ImageFont.truetype(
-                  MYANMAR_FONT,
-                  size
-              )
-
+              return ImageFont.truetype(MYANMAR_FONT, size)
 
           def normal(size):
-
-              return ImageFont.truetype(
-                  LATIN_FONT,
-                  size
-              )
-
+              return ImageFont.truetype(LATIN_FONT, size)
 
           def bold(size):
-
-              return ImageFont.truetype(
-                  LATIN_BOLD,
-                  size
-              )
-
+              return ImageFont.truetype(LATIN_BOLD, size)
 
           # ======================================================
           # BACKGROUND
           # ======================================================
 
-          image = Image.new(
-              "RGB",
-              (WIDTH, HEIGHT),
-              (255, 235, 80)
-          )
-
+          image = Image.new("RGB", (WIDTH, HEIGHT), (255, 235, 80))
           draw = ImageDraw.Draw(image)
-
 
           # ======================================================
           # TOP DATE
           # ======================================================
 
-          draw.rounded_rectangle(
-              (
-                  35,
-                  15,
-                  520,
-                  95
-              ),
-              radius=20,
-              fill=(255, 255, 255),
-              outline=(0, 0, 0),
-              width=4
-          )
-
-          draw.text(
-              (
-                  65,
-                  28
-              ),
-              date_text,
-              font=bold(48),
-              fill=(0, 0, 0)
-          )
-
+          draw.rounded_rectangle((35, 15, 520, 95), radius=20, fill=(255, 255, 255), outline=(0, 0, 0), width=4)
+          draw.text((65, 28), date_text, font=bold(48), fill=(0, 0, 0))
 
           # ======================================================
           # LEFT PANEL
           # ======================================================
 
-          draw.rounded_rectangle(
-              (
-                  35,
-                  115,
-                  650,
-                  1035
-              ),
-              radius=30,
-              fill=(255, 250, 185),
-              outline=(0, 0, 0),
-              width=6
-          )
-
-
-          draw.text(
-              (
-                  80,
-                  155
-              ),
-              "လက်မှတ်ထိုး",
-              font=mm(50),
-              fill=(0, 0, 0)
-          )
-
-
-          draw.text(
-              (
-                  80,
-                  225
-              ),
-              "ရက်အတွက်",
-              font=mm(50),
-              fill=(0, 0, 0)
-          )
-
+          draw.rounded_rectangle((35, 115, 650, 1035), radius=30, fill=(255, 250, 185), outline=(0, 0, 0), width=6)
+          draw.text((80, 155), "လက်မှတ်ထိုး", font=mm(50), fill=(0, 0, 0))
+          draw.text((80, 225), "ရက်အတွက်", font=mm(50), fill=(0, 0, 0))
 
           # TIME
-
-          draw.text(
-              (
-                  100,
-                  335
-              ),
-              time_text,
-              font=bold(72),
-              fill=(0, 0, 0)
-          )
-
-
-          draw.text(
-              (
-                  80,
-                  485
-              ),
-              "ပေါက်မယ်",
-              font=mm(55),
-              fill=(0, 0, 0)
-          )
-
+          draw.text((100, 335), time_text, font=bold(72), fill=(0, 0, 0))
+          draw.text((80, 485), "ပေါက်မယ်", font=mm(55), fill=(0, 0, 0))
 
           # LEFT NUMBER BOX
-
-          draw.rounded_rectangle(
-              (
-                  85,
-                  610,
-                  600,
-                  760
-              ),
-              radius=35,
-              fill=(255, 255, 255),
-              outline=(0, 0, 0),
-              width=6
-          )
-
-
-          draw.text(
-              (
-                  145,
-                  635
-              ),
-              LEFT_NUMBER,
-              font=bold(78),
-              fill=(170, 0, 0)
-          )
-
+          draw.rounded_rectangle((85, 610, 600, 760), radius=35, fill=(255, 255, 255), outline=(0, 0, 0), width=6)
+          draw.text((145, 635), LEFT_NUMBER, font=bold(78), fill=(170, 0, 0))
 
           # ======================================================
           # RIGHT PANEL
           # ======================================================
 
-          draw.rounded_rectangle(
-              (
-                  1270,
-                  115,
-                  1885,
-                  1035
-              ),
-              radius=30,
-              fill=(255, 250, 185),
-              outline=(0, 0, 0),
-              width=6
-          )
-
-
-          draw.text(
-              (
-                  1310,
-                  155
-              ),
-              "မင်္ဂလာရှိသော",
-              font=mm(48),
-              fill=(0, 0, 0)
-          )
-
+          draw.rounded_rectangle((1270, 115, 1885, 1035), radius=30, fill=(255, 250, 185), outline=(0, 0, 0), width=6)
+          draw.text((1310, 155), "မင်္ဂလာရှိသော", font=mm(48), fill=(0, 0, 0))
 
           # ======================================================
           # RIGHT NUMBER 1
           # ======================================================
 
-          draw.rounded_rectangle(
-              (
-                  1330,
-                  300,
-                  1825,
-                  430
-              ),
-              radius=35,
-              fill=(205, 0, 0)
-          )
-
-
-          draw.text(
-              (
-                  1400,
-                  325
-              ),
-              RIGHT_NUMBER_1,
-              font=bold(68),
-              fill=(255, 255, 255)
-          )
-
+          draw.rounded_rectangle((1330, 300, 1825, 430), radius=35, fill=(205, 0, 0))
+          draw.text((1400, 325), RIGHT_NUMBER_1, font=bold(68), fill=(255, 255, 255))
 
           # ======================================================
           # RIGHT NUMBER 2
           # ======================================================
 
-          draw.rounded_rectangle(
-              (
-                  1330,
-                  485,
-                  1825,
-                  615
-              ),
-              radius=35,
-              fill=(205, 0, 0)
-          )
-
-
-          draw.text(
-              (
-                  1370,
-                  510
-              ),
-              RIGHT_NUMBER_2,
-              font=bold(60),
-              fill=(255, 255, 255)
-          )
-
+          draw.rounded_rectangle((1330, 485, 1825, 615), radius=35, fill=(205, 0, 0))
+          draw.text((1370, 510), RIGHT_NUMBER_2, font=bold(60), fill=(255, 255, 255))
 
           # ======================================================
           # RIGHT NUMBER 3
           # ======================================================
 
-          draw.rounded_rectangle(
-              (
-                  1330,
-                  670,
-                  1825,
-                  800
-              ),
-              radius=35,
-              fill=(205, 0, 0)
-          )
-
-
-          draw.text(
-              (
-                  1370,
-                  695
-              ),
-              RIGHT_NUMBER_3,
-              font=bold(60),
-              fill=(255, 255, 255)
-          )
-
+          draw.rounded_rectangle((1330, 670, 1825, 800), radius=35, fill=(205, 0, 0))
+          draw.text((1370, 695), RIGHT_NUMBER_3, font=bold(60), fill=(255, 255, 255))
 
           # ======================================================
           # CENTER PHONE FRAME
@@ -544,47 +263,28 @@ jobs:
 
           PHONE_X = 690
           PHONE_Y = 45
-
           PHONE_W = 540
           PHONE_H = 990
 
-
           # Shadow
-
           draw.rounded_rectangle(
-              (
-                  PHONE_X - 15,
-                  PHONE_Y - 15,
-                  PHONE_X + PHONE_W + 15,
-                  PHONE_Y + PHONE_H + 15
-              ),
+              (PHONE_X - 15, PHONE_Y - 15, PHONE_X + PHONE_W + 15, PHONE_Y + PHONE_H + 15),
               radius=40,
               fill=(60, 60, 60)
           )
 
-
           # White frame
-
           draw.rounded_rectangle(
-              (
-                  PHONE_X - 8,
-                  PHONE_Y - 8,
-                  PHONE_X + PHONE_W + 8,
-                  PHONE_Y + PHONE_H + 8
-              ),
+              (PHONE_X - 8, PHONE_Y - 8, PHONE_X + PHONE_W + 8, PHONE_Y + PHONE_H + 8),
               radius=35,
               fill=(255, 255, 255)
           )
-
 
           # ======================================================
           # SAVE
           # ======================================================
 
-          image.save(
-              "background.png"
-          )
-
+          image.save("background.png")
 
           print("")
           print("==========================================")
@@ -594,15 +294,10 @@ jobs:
           print("Date:", date_text)
           print("Time:", time_text)
           print("==========================================")
-
-
           PYTHON
 
-
           python3 create_background.py
-
           file background.png
-
           ls -lh background.png
 
 
@@ -651,223 +346,138 @@ jobs:
             -camera-front none
 
           script: |
-
             set -e
 
-
             echo "=========================================="
-
             echo "ANDROID EMULATOR READY"
-
             echo "=========================================="
-
 
             adb devices
 
-
             echo ""
-
             echo "Android version:"
-
             adb shell getprop ro.build.version.release
 
-
             echo ""
-
             echo "Screen:"
-
             adb shell wm size
-
 
             # ======================================================
             # FORCE PORTRAIT
             # ======================================================
 
             adb shell settings put system accelerometer_rotation 0 || true
-
             adb shell settings put system user_rotation 0 || true
-
 
             # ======================================================
             # WAKE SCREEN
             # ======================================================
 
             adb shell input keyevent KEYCODE_WAKEUP || true
-
             adb shell settings put system screen_off_timeout 2147483647 || true
-
 
             # ======================================================
             # INSTALL APK
             # ======================================================
 
             echo ""
-
             echo "=========================================="
-
             echo "INSTALLING APK"
-
             echo "=========================================="
-
 
             adb install -r "$GITHUB_WORKSPACE/target_app.apk"
 
-
             echo ""
-
             echo "APK installed."
 
-
             # ======================================================
-            # FIND PACKAGE
+            # FIND PACKAGE + LAUNCH ACTIVITY
+            # (run aapt once, parse both from the same output)
             # ======================================================
 
             echo ""
-
             echo "=========================================="
-
             echo "FINDING APK PACKAGE"
-
             echo "=========================================="
 
+            BADGING=$(aapt dump badging "$GITHUB_WORKSPACE/target_app.apk")
 
-            PACKAGE=$(aapt dump badging \
-              "$GITHUB_WORKSPACE/target_app.apk" \
-              | sed -n "s/^package: name='\([^']*\)'.*/\1/p")
-
+            PACKAGE=$(echo "$BADGING" | sed -n "s/^package: name='\([^']*\)'.*/\1/p")
 
             if [ -z "$PACKAGE" ]; then
-
               echo "ERROR: Could not detect package."
-
               exit 1
-
             fi
-
 
             echo "Package: $PACKAGE"
 
-
-            # ======================================================
-            # FIND LAUNCH ACTIVITY
-            # ======================================================
-
-            ACTIVITY=$(aapt dump badging \
-              "$GITHUB_WORKSPACE/target_app.apk" \
-              | sed -n "s/^launchable-activity: name='\([^']*\)'.*/\1/p")
-
+            ACTIVITY=$(echo "$BADGING" | sed -n "s/^launchable-activity: name='\([^']*\)'.*/\1/p")
 
             if [ -z "$ACTIVITY" ]; then
-
               echo "ERROR: Could not detect launch activity."
-
               exit 1
-
             fi
 
-
             echo "Activity: $ACTIVITY"
-
 
             # ======================================================
             # LAUNCH APK
             # ======================================================
 
             echo ""
-
             echo "=========================================="
-
             echo "STARTING APK"
-
             echo "=========================================="
 
-
-            adb shell am start \
-              -n "$PACKAGE/$ACTIVITY"
-
+            adb shell am start -n "$PACKAGE/$ACTIVITY"
 
             sleep 8
 
-
             echo "APK started."
-
 
             # ======================================================
             # CHECK SCREEN
             # ======================================================
 
             echo ""
-
             echo "=========================================="
-
             echo "TEST SCREEN CAPTURE"
-
             echo "=========================================="
-
 
             rm -f "$GITHUB_WORKSPACE/test.h264"
 
-
-            timeout 12s \
-              adb exec-out \
-              screenrecord \
-              --output-format=h264 \
-              --size 540x960 \
-              --bit-rate 4000000 \
-              --time-limit 5 \
-              - \
-              > "$GITHUB_WORKSPACE/test.h264" \
-              || true
-
+            timeout 12s adb exec-out screenrecord --output-format=h264 --size 540x960 --bit-rate 4000000 --time-limit 5 - > "$GITHUB_WORKSPACE/test.h264" || true
 
             if [ ! -s "$GITHUB_WORKSPACE/test.h264" ]; then
-
               echo "ERROR: Android screen capture failed."
-
               exit 1
-
             fi
 
-
             echo "Screen capture OK."
-
 
             # ======================================================
             # YOUTUBE STREAM KEY CHECK
             # ======================================================
 
             if [ -z "$YOUTUBE_STREAM_KEY" ]; then
-
               echo ""
-
               echo "ERROR: YOUTUBE_STREAM_KEY is empty."
-
               echo ""
-
               echo "Create this GitHub Secret:"
-
               echo "YOUTUBE_STREAM_KEY"
-
               exit 1
-
             fi
-
 
             # ======================================================
             # CREATE ANDROID SCREEN PIPE
             # ======================================================
 
             echo ""
-
             echo "=========================================="
-
             echo "STARTING SCREEN CAPTURE"
-
             echo "=========================================="
 
-
-            rm -f "$GITHUB_WORKSPACE/test.h264"
-
+            rm -f "$GITHUB_WORKSPACE/android-screen.h264"
 
             # ======================================================
             # ANDROID SCREENRECORD
@@ -877,51 +487,28 @@ jobs:
             # ======================================================
 
             (
-
               while true
-
               do
-
                 echo ""
-
                 echo "------------------------------------------"
-
                 echo "STARTING SCREEN SEGMENT"
-
                 echo "$(date)"
-
                 echo "------------------------------------------"
 
-
-                adb exec-out \
-                  screenrecord \
-                  --output-format=h264 \
-                  --size 540x960 \
-                  --bit-rate 4000000 \
-                  --time-limit 170 \
-                  -
-
+                adb exec-out screenrecord --output-format=h264 --size 540x960 --bit-rate 4000000 --time-limit 170 -
 
                 CODE=$?
 
-
                 echo ""
-
                 echo "screenrecord exited: $CODE"
 
-
                 sleep 1
-
               done
-
             ) > "$GITHUB_WORKSPACE/android-screen.h264" &
-
 
             SCREEN_PID=$!
 
-
             echo "Screen capture PID: $SCREEN_PID"
-
 
             # ======================================================
             # WAIT FOR FIRST DATA
@@ -929,122 +516,32 @@ jobs:
 
             echo "Waiting for Android video..."
 
-
             for i in $(seq 1 30)
-
             do
-
               if [ -s "$GITHUB_WORKSPACE/android-screen.h264" ]; then
-
                 break
-
               fi
-
               sleep 1
-
             done
 
-
             if [ ! -s "$GITHUB_WORKSPACE/android-screen.h264" ]; then
-
               echo "ERROR: No Android video data."
-
               kill "$SCREEN_PID" || true
-
               exit 1
-
             fi
-
 
             # ======================================================
             # START FFMPEG
             # ======================================================
 
             echo ""
-
             echo "=========================================="
-
             echo "STARTING FFMPEG"
-
             echo "=========================================="
 
+            FILTER="[0:v]scale=540:960:force_original_aspect_ratio=decrease,pad=540:960:(ow-iw)/2:(oh-ih)/2,setsar=1[phone];[1:v]scale=1920:1080[background];[background][phone]overlay=690:45[out]"
 
-            ffmpeg \
-              -hide_banner \
-              -loglevel info \
-              \
-              -f h264 \
-              -framerate 30 \
-              -i "$GITHUB_WORKSPACE/android-screen.h264" \
-              \
-              -loop 1 \
-              -i "$GITHUB_WORKSPACE/background.png" \
-              \
-              -filter_complex "
-
-                [0:v]
-
-                scale=540:960:force_original_aspect_ratio=decrease,
-
-                pad=540:960:(ow-iw)/2:(oh-ih)/2,
-
-                setsar=1
-
-                [phone];
-
-                [1:v]
-
-                scale=1920:1080
-
-                [background];
-
-                [background][phone]
-
-                overlay=690:45
-
-                [out]
-
-              " \
-              \
-              -map "[out]" \
-              \
-              -f lavfi \
-              -i anullsrc=channel_layout=stereo:sample_rate=44100 \
-              \
-              -map 0:v \
-              \
-              -map 1:a \
-              \
-              -c:v libx264 \
-              \
-              -preset veryfast \
-              \
-              -tune zerolatency \
-              \
-              -pix_fmt yuv420p \
-              \
-              -r 30 \
-              \
-              -g 60 \
-              \
-              -keyint_min 60 \
-              \
-              -b:v 4500k \
-              \
-              -maxrate 5000k \
-              \
-              -bufsize 10000k \
-              \
-              -c:a aac \
-              \
-              -b:a 128k \
-              \
-              -ar 44100 \
-              \
-              -f flv \
-              \
-              "rtmp://a.rtmp.youtube.com/live2/$YOUTUBE_STREAM_KEY"
-
+            ffmpeg -hide_banner -loglevel info -f h264 -framerate 30 -i "$GITHUB_WORKSPACE/android-screen.h264" -loop 1 -i "$GITHUB_WORKSPACE/background.png" -filter_complex "$FILTER" -map "[out]" -f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 -map 0:v -map 1:a -c:v libx264 -preset veryfast -tune zerolatency -pix_fmt yuv420p -r 30 -g 60 -keyint_min 60 -b:v 4500k -maxrate 5000k -bufsize 10000k -c:a aac -b:a 128k -ar 44100 -f flv "rtmp://a.rtmp.youtube.com/live2/$YOUTUBE_STREAM_KEY"
 
             # ======================================================
             # CLEANUP
