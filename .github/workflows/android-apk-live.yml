@@ -407,8 +407,11 @@ jobs:
             echo "APK installed."
 
             # ======================================================
-            # FIND PACKAGE + LAUNCH ACTIVITY
-            # (run aapt once, parse both from the same output)
+            # FIND PACKAGE
+            # (no aapt dependency — aapt is not guaranteed to be on
+            # PATH on this runner/action. Instead, ask the device
+            # for the most recently installed third-party package,
+            # which is the one we just installed above.)
             # ======================================================
 
             echo ""
@@ -416,9 +419,7 @@ jobs:
             echo "FINDING APK PACKAGE"
             echo "=========================================="
 
-            BADGING=$(aapt dump badging "$GITHUB_WORKSPACE/target_app.apk")
-
-            PACKAGE=$(echo "$BADGING" | sed -n "s/^package: name='\([^']*\)'.*/\1/p")
+            PACKAGE=$(adb shell pm list packages -3 | tail -n 1 | sed 's/package://' | tr -d '\r')
 
             if [ -z "$PACKAGE" ]; then
               echo "ERROR: Could not detect package."
@@ -427,17 +428,10 @@ jobs:
 
             echo "Package: $PACKAGE"
 
-            ACTIVITY=$(echo "$BADGING" | sed -n "s/^launchable-activity: name='\([^']*\)'.*/\1/p")
-
-            if [ -z "$ACTIVITY" ]; then
-              echo "ERROR: Could not detect launch activity."
-              exit 1
-            fi
-
-            echo "Activity: $ACTIVITY"
-
             # ======================================================
             # LAUNCH APK
+            # (monkey launcher — no need to resolve the specific
+            # launch activity, so no aapt/dumpsys parsing required)
             # ======================================================
 
             echo ""
@@ -445,7 +439,7 @@ jobs:
             echo "STARTING APK"
             echo "=========================================="
 
-            adb shell am start -n "$PACKAGE/$ACTIVITY"
+            adb shell monkey -p "$PACKAGE" -c android.intent.category.LAUNCHER 1
 
             sleep 8
 
